@@ -28,20 +28,42 @@ async def download_match_video_route(
         print(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail="Internal server error while processing the download.")
     
-@router.get("/matches/{match_id}")
-async def get_match_route(
+@router.post("/matches/{match_id}/upload", description="Uploads the video for a specific match.")
+async def upload_match_video_route(
     match_id: str,
-    data: Data = Depends(get_data)
+    match_downloader: MatchDownloader = Depends(get_match_downloader)
 ):
     try:
-        match = await data.get_match(match_id)
-        if not match:
-            raise HTTPException(status_code=404, detail="Match not found.")
-        return match
+        video_path = await match_downloader.download_match_video(match_id)
+        if not os.path.exists(video_path):
+            raise HTTPException(status_code=404, detail="Match video not found.")
+        
+        result = await match_downloader.upload_match_video(video_path, os.path.basename(video_path))
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to upload match video.")
+        return {"message": "Match video uploaded successfully."}
     except HTTPException as e:
         raise e
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error while processing the request.")
+        print(f"An error occurred: {e}")
+        
+        
+
+    
+# @router.get("/matches/{match_id}")
+# async def get_match_route(
+#     match_id: str,
+#     data: Data = Depends(get_data)
+# ):
+#     try:
+#         match = await data.get_match(match_id)
+#         if not match:
+#             raise HTTPException(status_code=404, detail="Match not found.")
+#         return match
+#     except HTTPException as e:
+#         raise e
+#     except Exception as e:
+#         print(f"An unexpected error occurred: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error while processing the request.")
 
 
