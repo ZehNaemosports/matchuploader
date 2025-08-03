@@ -4,14 +4,14 @@ from pathlib import Path
 from typing import Optional
 
 class YoutubeDownloader:
-    def __init__(self, quality='720'):
+    def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt"):
         self.quality = quality
+        self.cookies_path = cookies_path
 
     def set_quality(self, quality):
         self.quality = quality
 
     async def download(self, url) -> Optional[Path]:
-        """Downloads a YouTube video and returns the path to the downloaded file"""
         format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]'
         
         cmd = [
@@ -24,9 +24,13 @@ class YoutubeDownloader:
             '--print-json',
             '-o', '%(title)s.%(ext)s',
             '--no-simulate',
-            url
         ]
-        
+
+        if self.cookies_path:
+            cmd += ['--cookies', self.cookies_path]
+
+        cmd.append(url)
+
         try:
             result = subprocess.run(
                 cmd,
@@ -50,7 +54,3 @@ class YoutubeDownloader:
         except json.JSONDecodeError:
             print("Error parsing yt-dlp output")
             return None
-
-# Tests
-# downloader = YoutubeDownloader(quality='720')
-# print(downloader.download("https://youtu.be/n-smKoW2XdM"))
