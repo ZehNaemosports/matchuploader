@@ -1,0 +1,53 @@
+# Byte-code files
+*.pyc
+__pycache__/
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# IDE specific files
+.idea/  # PyCharm
+.vscode/ # VS Code
+
+# Editor specific files
+*~
+*.bak
+*.swp
+.DS_Store # macOS specific
+
+# Development and testing artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Database files
+*.sqlite3
+*.db
+
+# Environment variables
+.env
+.flaskenv
+
+# Docker
+*.log
+!docker-compose.yml # Include docker-compose.yml if you want to commit it
+!Dockerfile # Include Dockerfile if you want to commit it
+
+# Poetry
+.python-version
+
+# Pipenv
+Pipfile.lock
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Jupyter Notebook files
+.ipynb_checkpoints/
+
+# Other temporary files
+tmp/
