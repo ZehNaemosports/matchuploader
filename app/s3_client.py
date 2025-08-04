@@ -19,10 +19,12 @@ class S3client:
                 Bucket=self.aws_bucket,
                 Key=object_key,
             )
-            return True
+            file_url = f"https://{self.aws_bucket}.s3.{self.aws_region}.amazonaws.com/{object_key}"
+            self.logger.info(f"File uploaded successfully to: {file_url}")
+            return file_url
         except Exception as e:
             self.logger.error(f"Error uploading file: {e}", exc_info=True)
-            return False
+            return None
         
     async def download_file(self, object_key: str, file_path: str):
         try:

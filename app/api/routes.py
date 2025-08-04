@@ -41,7 +41,7 @@ async def upload_match_video_route(
         result = await match_downloader.upload_match_video(video_path, os.path.basename(video_path))
         if not result:
             raise HTTPException(status_code=500, detail="Failed to upload match video.")
-        return {"message": "Match video uploaded successfully."}
+        return {"message": "Match video uploaded successfully.", "url": result}
     except HTTPException as e:
         raise e
     except Exception as e:
