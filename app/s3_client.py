@@ -1,6 +1,7 @@
 import boto3
 from botocore.exceptions import ClientError
 from starlette.concurrency import run_in_threadpool
+import mimetypes
 
 class S3client:
     def __init__(self, aws_access_key, aws_secret_key, aws_region, aws_bucket, logger):
@@ -13,13 +14,20 @@ class S3client:
 
     async def upload_file(self, file_path: str, object_key: str):
         try:
+            extra_args = {
+                "ContentType": "video/mp4",
+                "ContentDisposition": "inline"
+            }
+
             await run_in_threadpool(
                 self.client.upload_file,
                 Filename=file_path,
                 Bucket=self.aws_bucket,
                 Key=object_key,
+                ExtraArgs=extra_args
             )
-            file_url = f"https://{self.aws_bucket}.s3.{self.aws_region}.amazonaws.com/{object_key}"
+            
+            file_url = f"https://s3.amazonaws.com/{self.aws_bucket}/{object_key}"
             self.logger.info(f"File uploaded successfully to: {file_url}")
             return file_url
         except Exception as e:
