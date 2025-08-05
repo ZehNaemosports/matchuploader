@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import Settings
 from app.downloader import YoutubeDownloader
+# from app.queue.sqs_client import SqsClient
 from app.s3_client import S3client
 from contextlib import asynccontextmanager
 import logging
@@ -20,9 +21,16 @@ async def lifespan(app: FastAPI):
         aws_access_key=settings.aws_access_key,
         aws_secret_key=settings.aws_secret_key,
         aws_region=settings.aws_region,
-        aws_bucket=settings.aws_bucket,
-        logger=logger
+        aws_bucket=settings.aws_bucket
     )
+
+    # sqs_client = SqsClient(
+    #     aws_access_key=settings.aws_access_key,
+    #     aws_region=settings.aws_region,
+    #     aws_secret_key=settings.aws_secret_key,
+    #     aws_queue_url=settings.aws_queue_url
+    # )
+
     mongodb_client = AsyncIOMotorClient(settings.database_connection_string)
     mongodb = mongodb_client[settings.database_name]
     
@@ -31,6 +39,7 @@ async def lifespan(app: FastAPI):
     app.state.s3_client = s3_client
     app.state.logger = logger
     app.state.youtube_downloader = YoutubeDownloader()
+    # app.state.sqs_client = sqs_client
     
     yield
     

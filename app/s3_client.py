@@ -1,11 +1,13 @@
 import boto3
 from botocore.exceptions import ClientError
 from starlette.concurrency import run_in_threadpool
-import mimetypes
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class S3client:
-    def __init__(self, aws_access_key, aws_secret_key, aws_region, aws_bucket, logger):
-        self.logger = logger
+    def __init__(self, aws_access_key, aws_secret_key, aws_region, aws_bucket):
         self.aws_access_key = aws_access_key
         self.aws_secret_key = aws_secret_key
         self.aws_region = aws_region
@@ -16,7 +18,6 @@ class S3client:
         try:
             extra_args = {
                 "ContentType": "video/mp4",
-                "ContentDisposition": "inline"
             }
 
             await run_in_threadpool(
@@ -28,7 +29,7 @@ class S3client:
             )
             
             file_url = f"https://s3.amazonaws.com/{self.aws_bucket}/{object_key}"
-            self.logger.info(f"File uploaded successfully to: {file_url}")
+            logger.info(f"File uploaded successfully to: {file_url}")
             return file_url
         except Exception as e:
             self.logger.error(f"Error uploading file: {e}", exc_info=True)
@@ -44,20 +45,20 @@ class S3client:
             )
             return True
         except Exception as e:
-            self.logger.error(f"Error downloading file: {e}", exc_info=True)
+            logger.error(f"Error downloading file: {e}", exc_info=True)
             return False
         
     async def check_file_exists(self, object_key: str):
         try:
             await run_in_threadpool(self.client.head_object, Bucket=self.aws_bucket, Key=object_key)
-            self.logger.info(f"File '{object_key}' found in bucket '{self.aws_bucket}'.")
+            logger.info(f"File '{object_key}' found in bucket '{self.aws_bucket}'.")
             return True
         except ClientError as e:
             if e.response["Error"]["Code"] == "404":
-                self.logger.info(f"File '{object_key}' does not exist in bucket '{self.aws_bucket}'.")
+                logger.info(f"File '{object_key}' does not exist in bucket '{self.aws_bucket}'.")
                 return False
-            self.logger.error(f"AWS ClientError checking if file exists: {e}", exc_info=True)
+            logger.error(f"AWS ClientError checking if file exists: {e}", exc_info=True)
             return False
         except Exception as e:
-            self.logger.error(f"An unexpected error occurred checking if file exists: {e}", exc_info=True)
+            logger.error(f"An unexpected error occurred checking if file exists: {e}", exc_info=True)
             return False
