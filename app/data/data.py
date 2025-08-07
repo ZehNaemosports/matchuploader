@@ -9,7 +9,6 @@ class Data:
     async def get_match(self, matchId: str) -> Match:
         match = await self.database.get_collection('mergedmatches').find_one({"_id": ObjectId(matchId)})
         match = Match(**match)
-        print(match)
         return match
 
     async def update_match_video(self, matchId: str, videoUrl: str):

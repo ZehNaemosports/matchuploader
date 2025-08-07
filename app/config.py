@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     aws_secret_key: str
     aws_region: str
     aws_bucket: str
+    sqs_queue_url: str
 
     # mongo configs
     database_connection_string: str

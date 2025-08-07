@@ -11,9 +11,13 @@ class MatchDownloader:
 
     async def download_match_video(self, match_id: str):
         match: Match = await self.data.get_match(match_id)
+        if not match:
+            return None
+        filename = f"{match.home_team_string}V{match.away_team_string}-{match.date.replace('/', '-')}"
+        filename = filename.strip(" ").replace(" ", "")
         video_url = match.match_video
         print(video_url)
-        video = await self.youtube_downloader.download(video_url)
+        video = await self.youtube_downloader.download(url = video_url, filename=filename)
         return video
     
     async def upload_match_video(self, file_path: str, object_key: str):
