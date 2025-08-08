@@ -25,7 +25,7 @@ class MessageProcessor:
                         object_key = os.path.basename(video_path)
                         upload_url = await self.match_downloader.upload_match_video(str(video_path), object_key)
                         if upload_url:
-                            # await self.match_downloader.data.update_match_video(match_id, upload_url)
+                            await self.match_downloader.data.update_match_video(match_id, upload_url)
                             print(f"Successfully processed and uploaded match {match_id}. URL: {upload_url}")
                             self.sqs_client.delete_message(receipt_handle)
                             Path(video_path).unlink(missing_ok=True)
