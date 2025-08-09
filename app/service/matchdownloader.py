@@ -13,7 +13,8 @@ class MatchDownloader:
         match: Match = await self.data.get_match(match_id)
         if not match:
             return None
-        filename = f"{match.home_team_string}V{match.away_team_string}-{match.date.replace('/', '-')}"
+        date_only = match.date.split("T")[0].replace("/", "-")
+        filename = f"{match.home_team_string}V{match.away_team_string}-{date_only}"
         filename = filename.strip(" ").replace(" ", "")
         video_url = match.match_video
         print(video_url)
