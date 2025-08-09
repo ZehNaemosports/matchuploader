@@ -8,6 +8,7 @@ class Data:
 
     async def get_match(self, matchId: str) -> Match:
         match = await self.database.get_collection('mergedmatches').find_one({"_id": ObjectId(matchId)})
+        print(match)
         match = Match(**match)
         return match
 
