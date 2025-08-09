@@ -12,5 +12,5 @@ class Data:
         return match
 
     async def update_match_video(self, matchId: str, videoUrl: str):
-        await self.database.get_collection('mergedmatches').update_one({"_id": ObjectId(matchId)}, {"$set": {"matchVideo": videoUrl}})
+        await self.database.get_collection('mergedmatches').update_one({"_id": ObjectId(matchId)}, {"$set": {"match_video": videoUrl}})
         return True

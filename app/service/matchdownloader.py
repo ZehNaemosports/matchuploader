@@ -11,6 +11,7 @@ class MatchDownloader:
 
     async def download_match_video(self, match_id: str):
         match: Match = await self.data.get_match(match_id)
+        print(match)
         if not match:
             return None
         filename = f"{match.home_team_string}V{match.away_team_string}-{match.date.replace('/', '-')}"
