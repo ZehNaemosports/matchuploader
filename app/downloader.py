@@ -18,6 +18,7 @@ class YoutubeDownloader:
         
                 cmd = [
                     "yt-dlp",
+                    "-f", "standard-1080p",
                     "-o", output_path,
                     "--merge-output-format", "mp4",
                     "--no-check-certificate",
