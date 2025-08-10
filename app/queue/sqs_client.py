@@ -43,6 +43,7 @@ class SqsClient:
         response = client.receive_message(
             QueueUrl=self.queue_url,
             MaxNumberOfMessages=1,
-            WaitTimeSeconds=20
+            WaitTimeSeconds=20,
+            VisibilityTimeout=900
         )
         return response

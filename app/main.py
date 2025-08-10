@@ -55,8 +55,8 @@ async def lifespan(app: FastAPI):
     
     app.state.match_downloader = match_downloader
 
-    processor = MessageProcessor(sqs_client=sqs_client, match_downloader=match_downloader)
-    asyncio.create_task(processor.poll_messages())
+    # processor = MessageProcessor(sqs_client=sqs_client, match_downloader=match_downloader)
+    # asyncio.create_task(processor.poll_messages())
     
     yield
     
