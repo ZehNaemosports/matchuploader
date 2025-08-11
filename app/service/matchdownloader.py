@@ -2,6 +2,7 @@ from app.data.schema import Match
 from app.downloader import YoutubeDownloader
 from app.data.data import Data
 from app.s3_client import S3client
+import re
 
 class MatchDownloader:
     def __init__(self, youtube_downloader: YoutubeDownloader, data: Data, s3_client: S3client):
@@ -14,8 +15,10 @@ class MatchDownloader:
         if not match:
             return None
         date_only = match.date.split("T")[0].replace("/", "-")
-        filename = f"{match.home_team_string}V{match.away_team_string}-{date_only}"
-        filename = filename.strip(" ").replace(" ", "")
+        home = re.sub(r'[^A-Za-z0-9]', '', match.home_team_string)
+        away = re.sub(r'[^A-Za-z0-9]', '', match.away_team_string)
+        filename = f"{home}V{away}-{date_only}"
+        print(filename)
         video_url = match.match_video
         print(video_url)
         video = await self.youtube_downloader.download(url = video_url, filename=filename)
