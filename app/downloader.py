@@ -1,23 +1,53 @@
 import subprocess
 from pathlib import Path
 from typing import Optional
+import time
+import os
 
 class YoutubeDownloader:
-    def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt"):
+    def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=False):
         self.quality = quality
         self.cookies_path = cookies_path
+        self.use_tor = use_tor
 
     def set_quality(self, quality):
         self.quality = quality
 
+    def _ensure_tor_running(self):
+        try:
+            # Check if Tor is active
+            subprocess.run(["systemctl", "is-active", "--quiet", "tor"])
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Start Tor if not running
+            subprocess.run(["sudo", "service", "tor", "start"], check=True)
+            # Wait for Tor to initialize
+            time.sleep(5)
+
+    def _build_base_command(self):
+        """Build common command arguments with Tor support if enabled"""
+        cmd = ['yt-dlp']
+        
+        if self.use_tor:
+            self._ensure_tor_running()
+            cmd.extend([
+                '--proxy', 'socks5://localhost:9050',
+                '--socket-timeout', '60',
+                '--retries', '10',
+                '--force-ipv4'
+            ])
+        
+        if self.cookies_path and os.path.exists(self.cookies_path):
+            cmd.extend(['--cookies', self.cookies_path])
+            
+        return cmd
+
     async def download(self, url: str, filename: str) -> Optional[str]:
+        base_cmd = self._build_base_command()
+        output_path = f"{filename}.mp4"
+        
         if "app.veo.co" in url:
             try:
-                subprocess.run(["yt-dlp", "--version"], check=True, capture_output=True)
-                output_path = f"{filename}.mp4"
-        
-                cmd = [
-                    "yt-dlp",
+                veo_cmd = base_cmd + [
                     "-f", "standard-1080p",
                     "-o", output_path,
                     "--merge-output-format", "mp4",
@@ -25,51 +55,41 @@ class YoutubeDownloader:
                     url
                 ]
                 
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                print("Download completed successfully!")
-                final_filename = f'{filename}.mp4'
-                if Path(final_filename).exists():
-                    return Path(final_filename).absolute()
-                else:
-                    print("Download failed:", result.stderr)
-                    return None
-                
-            except subprocess.CalledProcessError as e:
-                print(f"Error downloading video: {e.stderr}")
+                result = subprocess.run(veo_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    return Path(output_path).absolute()
+                print("Veo download failed:", result.stderr)
                 return None
-            except FileNotFoundError:
-                print("yt-dlp not found. Please install it first.")
+                
+            except Exception as e:
+                print(f"Error downloading Veo video: {str(e)}")
                 return None
             
         format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]'
-
-        cmd = [
-            'yt-dlp',
+        
+        yt_cmd = base_cmd + [
             '-f', format_selector,
             '--merge-output-format', 'mp4',
             '--embed-thumbnail',
             '--embed-metadata',
             '--audio-quality', '0',
-            '-o', f'{filename}.%(ext)s',
+            '-o', output_path,
             '--no-simulate',
+            url
         ]
 
-        if self.cookies_path:
-            cmd += ['--cookies', self.cookies_path]
-
-        cmd.append(url)
-
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            final_filename = f'{filename}.mp4'
-            if Path(final_filename).exists():
-                return Path(final_filename).absolute()
-            else:
-                print("Download failed:", result.stderr)
-                return None
+            result = subprocess.run(yt_cmd, capture_output=True, text=True)
+            if Path(output_path).exists():
+                return Path(output_path).absolute()
+                
+            print("YouTube download failed. Possible solutions:")
+            print("1. Try different quality (currently set to {self.quality})")
+            print("Error details:", result.stderr)
+            return None
 
-        except FileNotFoundError:
-            print("Error: yt-dlp not found. Please install yt-dlp first.")
+        except Exception as e:
+            print(f"Critical error: {str(e)}")
             return None
         
 # s = YoutubeDownloader()
