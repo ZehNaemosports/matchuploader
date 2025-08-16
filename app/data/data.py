@@ -8,7 +8,6 @@ class Data:
 
     async def get_match(self, matchId: str) -> Match:
         match = await self.database.get_collection('mergedmatches').find_one({"_id": ObjectId(matchId)})
-        print(match)
         match = Match(**match)
         return match
 
@@ -18,9 +17,7 @@ class Data:
 
     async def get_matches(self):
         matches_cursor = self.database.get_collection('mergedmatches').find().limit(10)
-        print(matches_cursor)
         matches = await matches_cursor.to_list(length=10)
-        print(matches)
         return matches
 
     # async def get_latest_matches(self):
@@ -82,3 +79,21 @@ class Data:
             })
 
         return results
+
+    # async def list_all_match_events(self, matchId: str):
+    #     matchEventsCursor = self.database.get_collection('mergedplayermatchevents').find({"match_id": ObjectId(matchId)})
+    #     matchEventsList = await matchEventsCursor.to_list(length=None)
+
+    # async def list_matches_without_events(self):
+    #     events_collection = self.database.get_collection('mergedplayermatchevents')
+    #     matches_collection = self.database.get_collection('mergedmatches')
+
+    #     match_ids_with_events = await events_collection.distinct("match_id")
+
+    #     matches_cursor = matches_collection.find(
+    #         {"_id": {"$nin": match_ids_with_events}},
+    #         {"_id": 1}
+    #     )
+
+    #     match_ids_without_events = [match["_id"] async for match in matches_cursor]
+    #     return match_ids_without_events

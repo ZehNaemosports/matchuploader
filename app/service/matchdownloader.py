@@ -3,6 +3,9 @@ from app.downloader import YoutubeDownloader
 from app.data.data import Data
 from app.s3_client import S3client
 import re
+import logging
+
+logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class MatchDownloader:
     def __init__(self, youtube_downloader: YoutubeDownloader, data: Data, s3_client: S3client):
@@ -13,7 +16,7 @@ class MatchDownloader:
     async def download_match_video(self, match_id: str):
         match: Match = await self.data.get_match(match_id)
         if not match:
-            print(f"No match found for {match_id}")
+            logger.info(f"No match found for {match_id}")
             return None
 
         date_str = match.date or "unknown-date"
@@ -22,7 +25,7 @@ class MatchDownloader:
         video_url = match.match_video
 
         if not video_url:
-            print(f"No video URL for match {match_id}")
+            logger.info(f"No video URL for match {match_id}")
             return None
 
         try:
@@ -34,13 +37,13 @@ class MatchDownloader:
         away_clean = re.sub(r'[^A-Za-z0-9]', '', away_team)
 
         filename = f"{home_clean}V{away_clean}-{date_only}"
-        print(f"Downloading video for match {match_id} as {filename}")
+        logger.info(f"Downloading video for match {match_id} as {filename}")
 
         try:
             video = await self.youtube_downloader.download(url=video_url, filename=filename)
             return video
         except Exception as e:
-            print(f"Failed to download video for match {match_id}: {e}")
+            logger.info(f"Failed to download video for match {match_id}: {e}")
             return None
     
     async def upload_match_video(self, file_path: str, object_key: str):

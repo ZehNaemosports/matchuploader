@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Optional
 import time
 import os
+import logging
 
+logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 class YoutubeDownloader:
     def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
         self.quality = quality
@@ -58,11 +60,11 @@ class YoutubeDownloader:
                 result = subprocess.run(veo_cmd, capture_output=True, text=True)
                 if result.returncode == 0:
                     return Path(output_path).absolute()
-                print("Veo download failed:", result.stderr)
+                logger.info("Veo download failed:", result.stderr)
                 return None
                 
             except Exception as e:
-                print(f"Error downloading Veo video: {str(e)}")
+                logger.info(f"Error downloading Veo video: {str(e)}")
                 return None
             
         format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]'
@@ -79,17 +81,19 @@ class YoutubeDownloader:
         ]
 
         try:
+            logger.info(f"Downloading video from {url}")
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
             if Path(output_path).exists():
+                logger.info("download done")
                 return Path(output_path).absolute()
                 
-            print("YouTube download failed. Possible solutions:")
-            print("1. Try different quality (currently set to {self.quality})")
-            print("Error details:", result.stderr)
+            logger.info("YouTube download failed. Possible solutions:")
+            logger.info("1. Try different quality (currently set to {self.quality})")
+            logger.info("Error details:", result.stderr)
             return None
 
         except Exception as e:
-            print(f"Critical error: {str(e)}")
+            logger.info(f"Critical error: {str(e)}")
             return None
         
 # s = YoutubeDownloader()
