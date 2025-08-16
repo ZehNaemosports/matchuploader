@@ -19,16 +19,17 @@ class YoutubeDownloader:
     def _ensure_tor_running(self):
         try:
             # Check if Tor is active
-            subprocess.run(["systemctl", "is-active", "--quiet", "tor"])
+            subprocess.run(["systemctl", "is-active", "--quiet", "tor"], check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Start Tor if not running
             subprocess.run(["sudo", "service", "tor", "start"], check=True)
             # Wait for Tor to initialize
-            time.sleep(5)
+            time.sleep(3)
+            logger.info("Tor service started")
 
     def _build_base_command(self):
         """Build common command arguments with Tor support if enabled"""
-        cmd = ['yt-dlp']
+        cmd = ['yt-dlp', '--no-playlist']
         
         if self.use_tor:
             self._ensure_tor_running()
@@ -36,20 +37,23 @@ class YoutubeDownloader:
                 '--proxy', 'socks5://localhost:9050',
                 '--socket-timeout', '60',
                 '--retries', '10',
-                '--force-ipv4'
+                '--force-ipv4',
+                '--extractor-args', 'youtube:player_client=android',
+                '--throttled-rate', '100K'
             ])
-        
-        if self.cookies_path and os.path.exists(self.cookies_path):
+            
+        if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
             cmd.extend(['--cookies', self.cookies_path])
             
         return cmd
 
     async def download(self, url: str, filename: str) -> Optional[str]:
-        base_cmd = self._build_base_command()
-        output_path = f"{filename}.mp4"
-        
-        if "app.veo.co" in url:
-            try:
+        try:
+            base_cmd = self._build_base_command()
+            output_path = f"{filename}.mp4"
+            
+            if "app.veo.co" in url:
+                # Veo downloads
                 veo_cmd = base_cmd + [
                     "-f", "standard-1080p",
                     "-o", output_path,
@@ -58,44 +62,44 @@ class YoutubeDownloader:
                     url
                 ]
                 
-                result = subprocess.run(veo_cmd, capture_output=True, text=True)
-                if result.returncode == 0:
-                    return Path(output_path).absolute()
-                logger.info("Veo download failed:", result.stderr)
-                return None
+                if '--cookies' in veo_cmd:
+                    idx = veo_cmd.index('--cookies')
+                    del veo_cmd[idx:idx+2]
                 
-            except Exception as e:
-                logger.info(f"Error downloading Veo video: {str(e)}")
+                logger.info(f"Downloading Veo video with command: {' '.join(veo_cmd)}")
+                result = subprocess.run(veo_cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0 and Path(output_path).exists():
+                    logger.info(f"Veo download completed successfully: {output_path}")
+                    return Path(output_path).absolute()
+                
+                logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-        format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]'
-        
-        yt_cmd = base_cmd + [
-            '-f', format_selector,
-            '--merge-output-format', 'mp4',
-            '--embed-thumbnail',
-            '--embed-metadata',
-            '--audio-quality', '0',
-            '-o', output_path,
-            '--no-simulate',
-            url
-        ]
-
-        try:
-            logger.info(f"Downloading video from {url}")
+            # YouTube download
+            yt_cmd = base_cmd + [
+                '-f', f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]',
+                '--merge-output-format', 'mp4',
+                '--embed-thumbnail',
+                '--embed-metadata',
+                '--audio-quality', '0',
+                '-o', output_path,
+                url
+            ]
+            
+            logger.info(f"Downloading YouTube video with command: {' '.join(yt_cmd)}")
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
+            
             if Path(output_path).exists():
-                logger.info("download done")
+                file_size = os.path.getsize(output_path) / (1024 * 1024) 
+                logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
                 return Path(output_path).absolute()
                 
-            logger.info("YouTube download failed. Possible solutions:")
-            logger.info("1. Try different quality (currently set to {self.quality})")
-            logger.info("Error details:", result.stderr)
+            logger.error(f"YouTube download failed. Quality: {self.quality}")
+            logger.debug(f"Error details: {result.stderr}")
+            
             return None
 
         except Exception as e:
-            logger.info(f"Critical error: {str(e)}")
+            logger.exception(f"Critical error in download: {str(e)}")
             return None
-        
-# s = YoutubeDownloader()
-# print(s.download(url="https://app.veo.co/matches/20250727-ivory-coast-contre-makinde-fc-vs-kolia-fc-ligafci-a2d2c313/", filename="test"))
