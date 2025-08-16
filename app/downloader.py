@@ -87,7 +87,7 @@ class YoutubeDownloader:
                 url
             ]
             
-            logger.info(f"Downloading YouTube video with command: {' '.join(yt_cmd)}")
+            logger.info(f"Downloading YouTube video: {url}")
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
             
             if Path(output_path).exists():
@@ -95,8 +95,8 @@ class YoutubeDownloader:
                 logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
                 return Path(output_path).absolute()
                 
-            logger.error(f"YouTube download failed. Quality: {self.quality}")
-            logger.debug(f"Error details: {result.stderr}")
+            logger.error("Error downloading video")
+            logger.error(f"Error details: {result.stderr}")
             
             return None
 
