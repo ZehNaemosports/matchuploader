@@ -7,7 +7,8 @@ from app.service.matchdownloader import MatchDownloader
 import logging
 import asyncio
 
-logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class MessageProcessor:

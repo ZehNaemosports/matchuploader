@@ -5,7 +5,8 @@ from app.s3_client import S3client
 import re
 import logging
 
-logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class MatchDownloader:
     def __init__(self, youtube_downloader: YoutubeDownloader, data: Data, s3_client: S3client):

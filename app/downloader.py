@@ -5,7 +5,8 @@ import time
 import os
 import logging
 
-logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 class YoutubeDownloader:
     def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
         self.quality = quality
