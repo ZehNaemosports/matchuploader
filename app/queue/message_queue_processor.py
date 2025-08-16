@@ -35,6 +35,7 @@ class MessageProcessor:
                         print(f"Failed to download video for match {match_id}")
                 except Exception as e:
                     print(f"Error processing Match_Upload for {match_id}: {e}")
+                    self.sqs_client.delete_message(receipt_handle)
             else:
                 print("Match_Upload message missing matchId.")
         else:
