@@ -34,8 +34,10 @@ class MessageProcessor:
                             Path(video_path).unlink(missing_ok=True)
                         else:
                             logger.info(f"Failed to upload video for match {match_id}")
+                            self.sqs_client.delete_message(receipt_handle)
                     else:
                         logger.info(f"Failed to download video for match {match_id}")
+                        self.sqs_client.delete_message(receipt_handle)
                 except Exception as e:
                     logger.info(f"Error processing Match_Upload for {match_id}: {e}")
                     self.sqs_client.delete_message(receipt_handle)
