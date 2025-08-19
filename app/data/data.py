@@ -48,17 +48,11 @@ class Data:
                         "$not": {
                             "$regex": "(media\\.naemoapp\\.com|s3\\.amazonaws\\.com)"
                         }
-                    },
-                    "$or": [
-                        {"hasHomeBeenClipped": {"$in": [None, False]}},
-                        {"hasAwayBeenClipped": {"$in": [None, False]}}
-                    ]
+                    }
                 },
                 {
                     "_id": 1,
-                    "match_video": 1,
-                    "hasHomeBeenClipped": 1,
-                    "hasAwayBeenClipped": 1
+                    "match_video": 1
                 }
             )
             .sort("_id", -1)
@@ -73,12 +67,23 @@ class Data:
             results.append({
                 "_id": str(match["_id"]),
                 "created_at": created_at,
-                "match_video": match.get("match_video", ""),
-                "hasHomeBeenClipped": match.get("hasHomeBeenClipped"),
-                "hasAwayBeenClipped": match.get("hasAwayBeenClipped"),
+                "match_video": match.get("match_video", "")
             })
 
         return results
+
+
+    async def matches_count(self):
+        count = await self.database.get_collection("mergedmatches").count_documents({
+            "match_video": {
+                "$not": {
+                    "$regex": "(media\\.naemoapp\\.com|s3\\.amazonaws\\.com)"
+                }
+            }
+        })
+        return count
+
+
 
     # async def list_all_match_events(self, matchId: str):
     #     matchEventsCursor = self.database.get_collection('mergedplayermatchevents').find({"match_id": ObjectId(matchId)})
