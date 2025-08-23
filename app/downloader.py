@@ -8,7 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 class YoutubeDownloader:
-    def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
+    def __init__(self, quality='1080', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
         self.quality = quality
         self.cookies_path = cookies_path
         self.use_tor = use_tor
@@ -78,7 +78,7 @@ class YoutubeDownloader:
             
             # YouTube download
             yt_cmd = base_cmd + [
-                '-f', f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]',
+                '-f', f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]/best',
                 '--merge-output-format', 'mp4',
                 '--embed-thumbnail',
                 '--embed-metadata',
