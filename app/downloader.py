@@ -8,7 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 class YoutubeDownloader:
-    def __init__(self, quality='1080', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=False):
+    def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
         self.quality = quality
         self.cookies_path = cookies_path
         self.use_tor = use_tor
@@ -38,8 +38,8 @@ class YoutubeDownloader:
                 '--socket-timeout', '60',
                 '--retries', '10',
                 '--force-ipv4',
-                '--extractor-args', 'youtube:player_client=android',
-                '--throttled-rate', '100K'
+                # '--extractor-args', 'youtube:player_client=android',
+                # '--throttled-rate', '100K'
             ])
             
         if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
@@ -76,25 +76,20 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            # youtube download
-            yt_cmd = base_cmd + [
-                '-f', f'(bestvideo[vcodec^=av01][height<={self.quality}][fps>24]/'
-                    f'bestvideo[vcodec^=vp09][height<={self.quality}][fps>24]/'
-                    f'bestvideo[height<={self.quality}][fps>24])+bestaudio/'
-                    f'best[height<={self.quality}]/best',
+            format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]/best'
             
-                '--remux-video', 'mp4',
-                '--postprocessor-args', 'ffmpeg:-c copy',
+            yt_cmd = base_cmd + [
+                '-f', format_selector,
+                '--merge-output-format', 'mp4',
                 '--embed-thumbnail',
                 '--embed-metadata',
                 '--audio-quality', '0',
-                '--no-part',
                 '-o', output_path,
                 url
             ]
             
             logger.info(f"Downloading YouTube video: {url}")
-            logger.info(f"Output path: {output_path}")
+            logger.info(f"Command: {' '.join(yt_cmd)}")
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
             
             if Path(output_path).exists():
