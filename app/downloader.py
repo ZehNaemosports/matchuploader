@@ -32,7 +32,7 @@ class YoutubeDownloader:
         cmd = ['yt-dlp', '--no-playlist']
         
         if self.use_tor:
-            self._ensure_tor_running()
+            # self._ensure_tor_running()
             cmd.extend([
                 '--proxy', 'socks5://localhost:9050',
                 '--socket-timeout', '60',
@@ -76,7 +76,7 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            format_selector = f'bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]/best'
+            format_selector = f'best[height={self.quality}]/bestvideo[height={self.quality}]+bestaudio'
             
             yt_cmd = base_cmd + [
                 '-f', format_selector,
@@ -89,7 +89,7 @@ class YoutubeDownloader:
             ]
             
             logger.info(f"Downloading YouTube video: {url}")
-            logger.info(f"Command: {' '.join(yt_cmd)}")
+            logger.info(f"Output path: {output_path}")
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
             
             if Path(output_path).exists():
