@@ -39,8 +39,8 @@ class YoutubeDownloader:
                 '--socket-timeout', '60',
                 '--retries', '10',
                 '--force-ipv4',
-                # '--extractor-args', 'youtube:player_client=android',
-                # '--throttled-rate', '100K'
+                '--extractor-args', 'youtube:player_client=android',
+                '--throttled-rate', '100K'
             ])
             
         if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
