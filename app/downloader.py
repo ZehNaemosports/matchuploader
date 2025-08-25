@@ -107,11 +107,12 @@ class YoutubeDownloader:
             
             yt_cmd = base_cmd + [
                 '-f', format_selector,
-                '--merge-output-format', 'mp4',
+                '--remux-video', 'mp4',
                 '--embed-thumbnail',
                 '--embed-metadata',
                 '--audio-quality', '0',
                 '--progress',
+                '--no-part',
                 '-o', output_path,
                 url
             ]
