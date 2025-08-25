@@ -39,7 +39,7 @@ class YoutubeDownloader:
                 '--socket-timeout', '60',
                 '--retries', '10',
                 '--force-ipv4',
-                '--extractor-args', 'youtube:player_client=android',
+                # '--extractor-args', 'youtube:player_client=android',
                 '--throttled-rate', '100K'
             ])
             
