@@ -7,6 +7,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 class YoutubeDownloader:
     def __init__(self, quality='720', cookies_path: Optional[str] = "/home/ubuntu/cookies.txt", use_tor=True):
         self.quality = quality
@@ -47,8 +48,34 @@ class YoutubeDownloader:
             
         return cmd
 
+    async def list_formats(self, url: str):
+        """List available formats for a YouTube video"""
+        try:
+            base_cmd = self._build_base_command()
+            list_cmd = base_cmd + ['--list-formats', url]
+            
+            logger.info(f"Listing available formats for: {url}")
+            logger.info(f"Command: {' '.join(list_cmd)}")
+            
+            result = subprocess.run(list_cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info(f"Available formats:\n{result.stdout}")
+                return result.stdout
+            else:
+                logger.error(f"Failed to list formats: {result.stderr}")
+                return None
+                
+        except Exception as e:
+            logger.exception(f"Error listing formats: {str(e)}")
+            return None
+
     async def download(self, url: str, filename: str) -> Optional[str]:
         try:
+            formats_info = await self.list_formats(url)
+            if not formats_info:
+                logger.warning("Could not retrieve format information")
+            
             base_cmd = self._build_base_command()
             output_path = f"{filename}.mp4"
             
@@ -76,7 +103,7 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            format_selector = f'best[height={self.quality}]/bestvideo[height={self.quality}]+bestaudio'
+            format_selector = f'bestvideo[height<=720]+bestaudio'
             
             yt_cmd = base_cmd + [
                 '-f', format_selector,
@@ -84,12 +111,15 @@ class YoutubeDownloader:
                 '--embed-thumbnail',
                 '--embed-metadata',
                 '--audio-quality', '0',
+                '--progress',
                 '-o', output_path,
                 url
             ]
             
             logger.info(f"Downloading YouTube video: {url}")
             logger.info(f"Output path: {output_path}")
+            logger.info(f"Using format selector: {format_selector}")
+            
             result = subprocess.run(yt_cmd, capture_output=True, text=True)
             
             if Path(output_path).exists():
