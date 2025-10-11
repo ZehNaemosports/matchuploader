@@ -103,7 +103,7 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            format_selector = f'bestvideo[height<=1080]+bestaudio'
+            format_selector = f'bestvideo[height<=720]+bestaudio'
             
             yt_cmd = base_cmd + [
                 '-f', format_selector,
