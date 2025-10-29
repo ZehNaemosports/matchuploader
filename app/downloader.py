@@ -103,4 +103,36 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            format_selector = f'bestvideo_
+            format_selector = f'bestvideo[height<=720]+bestaudio'
+            
+            yt_cmd = base_cmd + [
+                '-f', format_selector,
+                '--remux-video', 'mp4',
+                '--embed-thumbnail',
+                '--embed-metadata',
+                '--audio-quality', '0',
+                '--progress',
+                '--no-part',
+                '-o', output_path,
+                url
+            ]
+            
+            logger.info(f"Downloading YouTube video: {url}")
+            logger.info(f"Output path: {output_path}")
+            logger.info(f"Using format selector: {format_selector}")
+            
+            result = subprocess.run(yt_cmd, capture_output=True, text=True)
+            
+            if Path(output_path).exists():
+                file_size = os.path.getsize(output_path) / (1024 * 1024) 
+                logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
+                return str(Path(output_path).absolute())
+                
+            logger.error("Error downloading video")
+            logger.error(f"Error details: {result.stderr}")
+            
+            return None
+
+        except Exception as e:
+            logger.exception(f"Critical error in download: {str(e)}")
+            return None
