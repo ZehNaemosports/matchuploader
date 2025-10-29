@@ -79,7 +79,7 @@ class YoutubeDownloader:
             base_cmd = self._build_base_command()
             output_path = f"{filename}.mp4"
             
-            if "app.veo.co" in url:
+            if "app.veo.co" in url or "veo" in url:
                 # Veo downloads
                 veo_cmd = base_cmd + [
                     "-f", "standard-1080p",
@@ -103,15 +103,15 @@ class YoutubeDownloader:
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            format_selector = f'bestvideo[height<=720]+bestaudio'
+            # FIX 1: Use the simpler format selector that worked in terminal
+            format_selector = 'best[height<=720]'
             
+            # FIX 1: Simplified command with working options
             yt_cmd = base_cmd + [
                 '-f', format_selector,
-                '--remux-video', 'mp4',
+                '--merge-output-format', 'mp4',  # Use merge instead of remux
                 '--embed-thumbnail',
                 '--embed-metadata',
-                '--audio-quality', '0',
-                '--progress',
                 '--no-part',
                 '-o', output_path,
                 url
@@ -120,17 +120,17 @@ class YoutubeDownloader:
             logger.info(f"Downloading YouTube video: {url}")
             logger.info(f"Output path: {output_path}")
             logger.info(f"Using format selector: {format_selector}")
+            logger.info(f"Full command: {' '.join(yt_cmd)}")
             
-            result = subprocess.run(yt_cmd, capture_output=True, text=True)
+            # FIX 1: Use subprocess.run without capture_output to see real-time progress
+            result = subprocess.run(yt_cmd, text=True)
             
-            if Path(output_path).exists():
+            if result.returncode == 0 and Path(output_path).exists():
                 file_size = os.path.getsize(output_path) / (1024 * 1024) 
                 logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
                 return str(Path(output_path).absolute())
                 
-            logger.error("Error downloading video")
-            logger.error(f"Error details: {result.stderr}")
-            
+            logger.error(f"Error downloading video. Return code: {result.returncode}")
             return None
 
         except Exception as e:
