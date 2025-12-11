@@ -104,7 +104,7 @@ class YoutubeDownloader:
                 return None
             
             # FIX 1: Use the simpler format selector that worked in terminal
-            format_selector = 'best[height<=720]'
+            format_selector = 'best[height<=480]'
             
             # FIX 1: Simplified command with working options
             yt_cmd = base_cmd + [
