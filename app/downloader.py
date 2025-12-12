@@ -39,8 +39,6 @@ class YoutubeDownloader:
                 '--socket-timeout', '60',
                 '--retries', '10',
                 '--force-ipv4',
-                # '--extractor-args', 'youtube:player_client=android',
-                # '--throttled-rate', '100K'
             ])
         
         if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
@@ -76,61 +74,106 @@ class YoutubeDownloader:
             if not formats_info:
                 logger.warning("Could not retrieve format information")
             
-            base_cmd = self._build_base_command()
             output_path = f"{filename}.mp4"
             
-            if "app.veo.co" in url or "veo" in url:
+            # Check for Veo videos first
+            if "app.veo.co" in url or "veo" in url.lower():
                 # Veo downloads
-                veo_cmd = base_cmd + [
+                veo_cmd = [
+                    'yt-dlp',
                     "-f", "standard-1080p",
                     "-o", output_path,
                     "--merge-output-format", "mp4",
                     "--no-check-certificate",
+                    "--no-playlist",
                     url
                 ]
-                
-                if '--cookies' in veo_cmd:
-                    idx = veo_cmd.index('--cookies')
-                    del veo_cmd[idx:idx+2]
                 
                 logger.info(f"Downloading Veo video with command: {' '.join(veo_cmd)}")
                 result = subprocess.run(veo_cmd, capture_output=True, text=True)
                 
                 if result.returncode == 0 and Path(output_path).exists():
-                    logger.info(f"Veo download completed successfully: {output_path}")
+                    file_size = os.path.getsize(output_path) / (1024 * 1024)
+                    logger.info(f"Veo download completed successfully: {output_path} ({file_size:.2f} MB)")
                     return str(Path(output_path).absolute())
                 
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
             
-            # FIX 1: Use the simpler format selector that worked in terminal
-            format_selector = "136+140"
-            
-            # FIX 1: Simplified command with working options
-            yt_cmd = base_cmd + [
-                '-f', format_selector,
-                '--merge-output-format', 'mp4',  # Use merge instead of remux
-                '--embed-thumbnail',
-                '--embed-metadata',
-                '--no-part',
+            # Use the exact command that worked in terminal
+            yt_cmd = [
+                'yt-dlp',
+                '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+                '--merge-output-format', 'mp4',
                 '-o', output_path,
-                url
+                '--no-playlist',
+                '--no-check-certificate'
             ]
+            
+            # Add cookies if available and not using Tor
+            if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
+                yt_cmd.extend(['--cookies', self.cookies_path])
+            
+            # Add Tor proxy if enabled
+            if self.use_tor:
+                # self._ensure_tor_running()
+                yt_cmd.extend([
+                    '--proxy', 'socks5://localhost:9050',
+                    '--socket-timeout', '60',
+                    '--retries', '10',
+                    '--force-ipv4',
+                ])
+            
+            # Finally add the URL
+            yt_cmd.append(url)
             
             logger.info(f"Downloading YouTube video: {url}")
             logger.info(f"Output path: {output_path}")
-            logger.info(f"Using format selector: {format_selector}")
             logger.info(f"Full command: {' '.join(yt_cmd)}")
             
-            # FIX 1: Use subprocess.run without capture_output to see real-time progress
-            result = subprocess.run(yt_cmd, text=True)
+            # Run the download
+            result = subprocess.run(yt_cmd, capture_output=True, text=True)
             
-            if result.returncode == 0 and Path(output_path).exists():
-                file_size = os.path.getsize(output_path) / (1024 * 1024) 
-                logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
+            # Check if download was successful
+            if result.returncode == 0:
+                if Path(output_path).exists():
+                    file_size = os.path.getsize(output_path) / (1024 * 1024)
+                    logger.info(f"YouTube download completed: {output_path} ({file_size:.2f} MB)")
+                    logger.debug(f"Download output: {result.stdout}")
+                    return str(Path(output_path).absolute())
+                else:
+                    # Try alternative output pattern
+                    alt_output = Path(f"{filename}.mp4.part")
+                    if alt_output.exists():
+                        alt_output.rename(output_path)
+                        file_size = os.path.getsize(output_path) / (1024 * 1024)
+                        logger.info(f"YouTube download completed (renamed from .part): {output_path} ({file_size:.2f} MB)")
+                        return str(Path(output_path).absolute())
+            
+            # If we get here, something went wrong
+            logger.error(f"Download failed with return code: {result.returncode}")
+            logger.error(f"Error output: {result.stderr}")
+            
+            # Try with simpler format selector as fallback
+            logger.info("Trying fallback with simpler format selector...")
+            fallback_cmd = [
+                'yt-dlp',
+                '-f', 'mp4',
+                '-o', output_path,
+                '--no-playlist',
+                url
+            ]
+            
+            if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
+                fallback_cmd.extend(['--cookies', self.cookies_path])
+            
+            fallback_result = subprocess.run(fallback_cmd, capture_output=True, text=True)
+            
+            if fallback_result.returncode == 0 and Path(output_path).exists():
+                file_size = os.path.getsize(output_path) / (1024 * 1024)
+                logger.info(f"Fallback download succeeded: {output_path} ({file_size:.2f} MB)")
                 return str(Path(output_path).absolute())
-                
-            logger.error(f"Error downloading video. Return code: {result.returncode}")
+            
             return None
 
         except Exception as e:
