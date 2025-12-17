@@ -29,21 +29,23 @@ class YoutubeDownloader:
             logger.info("Tor service started")
 
     def _build_base_command(self):
-        """Build common command arguments with Tor support if enabled"""
-        cmd = ['yt-dlp', '--no-playlist']
-        
+        cmd = [
+            'yt-dlp',
+            '--no-playlist',
+            '--js-runtimes', 'deno'
+        ]
+    
+        if self.cookies_path and os.path.exists(self.cookies_path):
+            cmd.extend(['--cookies', self.cookies_path])
+    
         if self.use_tor:
-            # self._ensure_tor_running()
             cmd.extend([
                 '--proxy', 'socks5://localhost:9050',
                 '--socket-timeout', '60',
                 '--retries', '10',
                 '--force-ipv4',
             ])
-        
-        if not self.use_tor and self.cookies_path and os.path.exists(self.cookies_path):
-            cmd.extend(['--cookies', self.cookies_path])
-        
+    
         return cmd
 
     async def list_formats(self, url: str):
