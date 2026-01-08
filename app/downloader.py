@@ -17,7 +17,7 @@ class YoutubeDownloader:
         self,
         quality: str = '720',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
-        use_tor: bool = True,
+        use_tor: bool = False,
     ):
         self.quality = quality
         self.cookies_path = cookies_path
