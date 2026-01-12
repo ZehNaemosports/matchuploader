@@ -15,16 +15,18 @@ logger = logging.getLogger(__name__)
 class YoutubeDownloader:
     def __init__(
         self,
-        quality: str = '720',
+        preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         use_tor: bool = False,
     ):
-        self.quality = quality
+        self.preferred_quality = preferred_quality
+        self.fallback_quality = '720'  # Fixed fallback quality
         self.cookies_path = cookies_path
         self.use_tor = use_tor
 
-    def set_quality(self, quality: str):
-        self.quality = quality
+    def set_quality(self, preferred_quality: str, fallback_quality: str = '720'):
+        self.preferred_quality = preferred_quality
+        self.fallback_quality = fallback_quality
 
     def _ensure_tor_running(self):
         try:
@@ -95,12 +97,13 @@ class YoutubeDownloader:
 
     async def download(self, url: str, filename: str) -> Optional[str]:
         try:
+            # List available formats first for debugging
             await self.list_formats(url)
 
             output_path = f"{filename}.mp4"
 
             # -------------------------
-            # VEO HANDLING
+            # VEO HANDLING (unchanged)
             # -------------------------
             if "app.veo.co" in url:
                 veo_cmd = self._build_base_command() + [
@@ -129,41 +132,51 @@ class YoutubeDownloader:
                 return None
 
             # -------------------------
-            # YOUTUBE DOWNLOAD
+            # YOUTUBE DOWNLOAD - Try 1080p first, fallback to 720p
             # -------------------------
-            yt_cmd = self._build_base_command() + [
-                "-f", f"bestvideo[height<={self.quality}]+bestaudio/best[height<={self.quality}]",
+            
+            # First attempt: Preferred quality (1080p)
+            preferred_cmd = self._build_base_command() + [
+                "-f", f"bestvideo[height<={self.preferred_quality}]+bestaudio/best[height<={self.preferred_quality}]",
                 "--merge-output-format", "mp4",
                 "-o", output_path,
                 "--no-check-certificate",
                 url,
             ]
 
-            logger.info(f"Downloading YouTube video")
+            logger.info(f"Downloading YouTube video - Trying {self.preferred_quality}p first")
             logger.info(f"Output path: {output_path}")
-            logger.info(f"Command: {' '.join(yt_cmd)}")
+            logger.info(f"Command: {' '.join(preferred_cmd)}")
 
             result = subprocess.run(
-                yt_cmd,
+                preferred_cmd,
                 capture_output=True,
                 text=True,
             )
 
             if result.returncode == 0 and Path(output_path).exists():
                 size = os.path.getsize(output_path) / (1024 * 1024)
-                logger.info(f"YouTube download completed: {size:.2f} MB")
+                logger.info(f"YouTube download completed at {self.preferred_quality}p: {size:.2f} MB")
                 return str(Path(output_path).absolute())
 
-            logger.error(f"Download failed: {result.stderr}")
+            logger.warning(f"Preferred quality ({self.preferred_quality}p) download failed: {result.stderr}")
+            
+            # Clean up failed download attempt if file exists but is corrupted
+            if Path(output_path).exists():
+                try:
+                    os.remove(output_path)
+                    logger.info(f"Removed incomplete/corrupted file: {output_path}")
+                except Exception as e:
+                    logger.warning(f"Could not remove file {output_path}: {e}")
 
-            # -------------------------
-            # FALLBACK
-            # -------------------------
-            logger.info("Trying fallback format selector")
-
+            # Second attempt: Fallback quality (720p)
+            logger.info(f"Trying fallback quality: {self.fallback_quality}p")
+            
             fallback_cmd = self._build_base_command() + [
-                "-f", "mp4",
+                "-f", f"bestvideo[height<={self.fallback_quality}]+bestaudio/best[height<={self.fallback_quality}]",
+                "--merge-output-format", "mp4",
                 "-o", output_path,
+                "--no-check-certificate",
                 url,
             ]
 
@@ -177,10 +190,36 @@ class YoutubeDownloader:
 
             if fallback_result.returncode == 0 and Path(output_path).exists():
                 size = os.path.getsize(output_path) / (1024 * 1024)
-                logger.info(f"Fallback download succeeded: {size:.2f} MB")
+                logger.info(f"Fallback download succeeded at {self.fallback_quality}p: {size:.2f} MB")
                 return str(Path(output_path).absolute())
 
-            logger.error("Fallback also failed")
+            logger.error(f"Fallback quality ({self.fallback_quality}p) also failed")
+
+            # -------------------------
+            # LAST RESORT FALLBACK - Generic mp4
+            # -------------------------
+            logger.info("Trying last resort fallback (any mp4 format)")
+            
+            last_resort_cmd = self._build_base_command() + [
+                "-f", "mp4",
+                "-o", output_path,
+                url,
+            ]
+
+            logger.info(f"Last resort command: {' '.join(last_resort_cmd)}")
+
+            last_resort_result = subprocess.run(
+                last_resort_cmd,
+                capture_output=True,
+                text=True,
+            )
+
+            if last_resort_result.returncode == 0 and Path(output_path).exists():
+                size = os.path.getsize(output_path) / (1024 * 1024)
+                logger.info(f"Last resort fallback succeeded: {size:.2f} MB")
+                return str(Path(output_path).absolute())
+
+            logger.error("All download attempts failed")
             return None
 
         except Exception as e:
