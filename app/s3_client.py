@@ -28,7 +28,7 @@ class S3client:
                 ExtraArgs=extra_args
             )
             
-            file_url = f"https://s3.amazonaws.com/{self.aws_bucket}/{object_key}"
+            file_url = f"https://{self.aws_bucket}/{object_key}"
             logger.info(f"File uploaded successfully to: {file_url}")
             return file_url
         except Exception as e:
