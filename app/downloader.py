@@ -103,18 +103,27 @@ class YoutubeDownloader:
             output_path = f"{filename}.mp4"
 
             # -------------------------
-            # VEO HANDLING (unchanged)
+            # VEO HANDLING (NO TOR)
             # -------------------------
             if "app.veo.co" in url:
-                veo_cmd = self._build_base_command() + [
+                veo_cmd = [
+                    "yt-dlp",
+                    "--no-playlist",
+                    "--js-runtimes", "deno",
+                ]
+
+                if self.cookies_path and os.path.exists(self.cookies_path):
+                    veo_cmd.extend(["--cookies", self.cookies_path])
+
+                veo_cmd.extend([
                     "-f", "standard-1080p",
                     "--merge-output-format", "mp4",
                     "-o", output_path,
                     "--no-check-certificate",
                     url,
-                ]
+                ])
 
-                logger.info(f"Downloading Veo video")
+                logger.info("Downloading Veo video (Tor disabled)")
                 logger.info(f"Command: {' '.join(veo_cmd)}")
 
                 result = subprocess.run(
@@ -161,7 +170,6 @@ class YoutubeDownloader:
 
             logger.warning(f"Preferred quality ({self.preferred_quality}p) download failed: {result.stderr}")
             
-            # Clean up failed download attempt if file exists but is corrupted
             if Path(output_path).exists():
                 try:
                     os.remove(output_path)
