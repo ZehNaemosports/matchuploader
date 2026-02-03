@@ -17,7 +17,7 @@ class YoutubeDownloader:
         self,
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
-        use_tor: bool = True,
+        use_tor: bool = False,
     ):
         self.preferred_quality = preferred_quality
         self.fallback_quality = '720'  # Fixed fallback quality
