@@ -18,13 +18,19 @@ class YoutubeDownloader:
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         use_tor: bool = False,
-        use_remote_components: bool = True,  # NEW: Enable EJS by default
+        use_remote_components: bool = True,
+        auto_update_components: bool = True,  # NEW: Auto-update EJS components
     ):
         self.preferred_quality = preferred_quality
-        self.fallback_quality = '720'  # Fixed fallback quality
+        self.fallback_quality = '720'
         self.cookies_path = cookies_path
         self.use_tor = use_tor
-        self.use_remote_components = use_remote_components  # NEW
+        self.use_remote_components = use_remote_components
+        self.auto_update_components = auto_update_components
+        
+        # Auto-update components on init if enabled
+        if auto_update_components:
+            self._update_components_sync()
 
     def set_quality(self, preferred_quality: str, fallback_quality: str = '720'):
         self.preferred_quality = preferred_quality
@@ -44,14 +50,37 @@ class YoutubeDownloader:
             time.sleep(3)
             logger.info("Tor service started")
 
-    def _build_base_command(self):
+    def _update_components_sync(self):
+        """Synchronous component update (called from __init__)"""
+        try:
+            logger.info("Updating EJS components...")
+            cmd = [
+                "yt-dlp",
+                "--remote-components", "ejs:github",
+                "--update",
+                "--quiet",
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            
+            if result.returncode == 0:
+                logger.info("EJS components updated successfully")
+            else:
+                logger.warning(f"EJS components update had issues: {result.stderr[:200]}")
+                
+        except subprocess.TimeoutExpired:
+            logger.warning("EJS components update timed out")
+        except Exception as e:
+            logger.warning(f"Could not update EJS components: {e}")
+
+    def _build_base_command(self, include_components: bool = True):
         """
         Base yt-dlp command used everywhere.
-        This guarantees:
-        - JS runtime
-        - Cookies
-        - Tor (if enabled)
-        - Remote components for JS challenges
         """
         cmd = [
             "yt-dlp",
@@ -59,16 +88,15 @@ class YoutubeDownloader:
             "--js-runtimes", "deno",
         ]
 
-        # Add remote components for JS challenge solving
-        if self.use_remote_components:
+        # Add remote components if enabled
+        if self.use_remote_components and include_components:
             cmd.extend(["--remote-components", "ejs:github"])
 
-        # ALWAYS use cookies if available (Tor or not)
+        # Use cookies if available
         if self.cookies_path and os.path.exists(self.cookies_path):
             cmd.extend(["--cookies", self.cookies_path])
 
         if self.use_tor:
-            # self._ensure_tor_running()
             cmd.extend([
                 "--proxy", "socks5://localhost:9050",
                 "--socket-timeout", "60",
@@ -83,18 +111,17 @@ class YoutubeDownloader:
         try:
             logger.info("Updating yt-dlp...")
             
-            # For pip installation
             update_cmd = ["pip", "install", "--upgrade", "yt-dlp"]
             
             result = subprocess.run(
                 update_cmd,
                 capture_output=True,
                 text=True,
+                timeout=120,
             )
             
             if result.returncode == 0:
                 logger.info("yt-dlp updated successfully")
-                # Get new version
                 version_result = subprocess.run(
                     ["yt-dlp", "--version"],
                     capture_output=True,
@@ -104,9 +131,12 @@ class YoutubeDownloader:
                     logger.info(f"Current version: {version_result.stdout.strip()}")
                 return True
             else:
-                logger.error(f"Failed to update yt-dlp: {result.stderr}")
+                logger.error(f"Failed to update yt-dlp: {result.stderr[:500]}")
                 return False
                 
+        except subprocess.TimeoutExpired:
+            logger.error("yt-dlp update timed out")
+            return False
         except Exception as e:
             logger.exception(f"Error updating yt-dlp: {e}")
             return False
@@ -120,58 +150,62 @@ class YoutubeDownloader:
                 "yt-dlp",
                 "--remote-components", "ejs:github",
                 "--update",
+                "--quiet",
             ]
             
             result = subprocess.run(
                 update_cmd,
                 capture_output=True,
                 text=True,
+                timeout=60,
             )
             
             if result.returncode == 0:
                 logger.info("Remote components updated successfully")
                 return True
             else:
-                logger.warning(f"Remote components update had issues: {result.stderr}")
-                # Continue anyway - components might still work
-                return True
+                logger.warning(f"Remote components update had issues: {result.stderr[:200]}")
+                return True  # Continue anyway
                 
+        except subprocess.TimeoutExpired:
+            logger.warning("Remote components update timed out")
+            return True
         except Exception as e:
             logger.exception(f"Error updating components: {e}")
             return False
 
     async def list_formats(self, url: str):
+        """List available formats with timeout"""
         try:
             cmd = self._build_base_command() + ["--list-formats", url]
 
             logger.info(f"Listing available formats for: {url}")
-            logger.info(f"Command: {' '.join(cmd)}")
 
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
+                timeout=30,  # Add timeout
             )
 
             if result.returncode == 0:
-                logger.info(f"Available formats:\n{result.stdout}")
+                logger.debug(f"Available formats:\n{result.stdout}")
                 return result.stdout
+            else:
+                logger.error(f"Failed to list formats: {result.stderr[:500]}")
+                return None
 
-            logger.error(f"Failed to list formats: {result.stderr}")
+        except subprocess.TimeoutExpired:
+            logger.error("Format listing timed out")
             return None
-
         except Exception as e:
             logger.exception(f"Error listing formats: {e}")
             return None
 
-    async def download(self, url: str, filename: str, auto_update: bool = False) -> Optional[str]:
+    async def download(self, url: str, filename: str, auto_update: bool = False, 
+                      max_attempts: int = 2, timeout_per_attempt: int = 300) -> Optional[str]:
         """
-        Download video with automatic updates if enabled
-        
-        Args:
-            url: Video URL
-            filename: Output filename (without extension)
-            auto_update: If True, update yt-dlp and components before download
+        Download video with improved fallback logic
         """
         try:
             # Auto-update if requested
@@ -179,147 +213,87 @@ class YoutubeDownloader:
                 await self.update_ytdlp()
                 await self.update_components()
 
-            # List available formats first for debugging
-            await self.list_formats(url)
-
-            # Use pattern for extension to avoid .mp4.webm issue
-            output_path = f"{filename}.%(ext)s"
-
+            # Use pattern for extension
+            output_pattern = f"{filename}.%(ext)s"
+            
             # -------------------------
-            # VEO HANDLING (NO TOR)
+            # VEO HANDLING
             # -------------------------
             if "app.veo.co" in url:
-                veo_cmd = [
-                    "yt-dlp",
-                    "--no-playlist",
-                    "--js-runtimes", "deno",
-                ]
+                return await self._download_veo(url, filename)
 
-                # Add remote components for Veo too if enabled
-                if self.use_remote_components:
-                    veo_cmd.extend(["--remote-components", "ejs:github"])
-
-                if self.cookies_path and os.path.exists(self.cookies_path):
-                    veo_cmd.extend(["--cookies", self.cookies_path])
-
-                veo_cmd.extend([
-                    "-f", "standard-1080p",
-                    "--merge-output-format", "mp4",
-                    "-o", output_path,
+            # -------------------------
+            # YOUTUBE DOWNLOAD
+            # -------------------------
+            
+            # First, get available formats to choose best one
+            formats_info = await self.list_formats(url)
+            
+            # Try multiple quality attempts
+            qualities_to_try = [
+                (self.preferred_quality, "preferred"),
+                (self.fallback_quality, "fallback"),
+                (None, "any")  # Last resort: any quality
+            ]
+            
+            for quality, attempt_name in qualities_to_try:
+                logger.info(f"Attempting download: {attempt_name} ({quality}p if applicable)")
+                
+                cmd = self._build_base_command()
+                
+                if quality:  # Specific quality requested
+                    # Use more reliable format selection
+                    format_spec = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best[height<={quality}]"
+                    cmd.extend([
+                        "-f", format_spec,
+                        "--merge-output-format", "mp4",
+                    ])
+                else:  # Any quality
+                    cmd.extend([
+                        "-f", "bestvideo+bestaudio/best",
+                        "--merge-output-format", "mp4",
+                    ])
+                
+                cmd.extend([
+                    "-o", output_pattern,
                     "--no-check-certificate",
+                    "--socket-timeout", str(timeout_per_attempt),
                     url,
                 ])
 
-                logger.info("Downloading Veo video (Tor disabled)")
-                logger.info(f"Command: {' '.join(veo_cmd)}")
-
-                result = subprocess.run(
-                    veo_cmd,
-                    capture_output=True,
-                    text=True,
-                )
-
-                # Find actual output file (since we used %(ext)s pattern)
-                actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-                if actual_output and Path(actual_output).exists():
-                    size = os.path.getsize(actual_output) / (1024 * 1024)
-                    logger.info(f"Veo download completed: {size:.2f} MB")
-                    return str(Path(actual_output).absolute())
-
-                logger.error(f"Veo download failed: {result.stderr}")
-                return None
-
-            # -------------------------
-            # YOUTUBE DOWNLOAD - Try 1080p first, fallback to 720p
-            # -------------------------
-            
-            # First attempt: Preferred quality (1080p)
-            preferred_cmd = self._build_base_command() + [
-                "-f", f"bestvideo[height<={self.preferred_quality}]+bestaudio/best[height<={self.preferred_quality}]",
-                "--merge-output-format", "mp4",
-                "-o", output_path,
-                "--no-check-certificate",
-                url,
-            ]
-
-            logger.info(f"Downloading YouTube video - Trying {self.preferred_quality}p first")
-            logger.info(f"Output pattern: {output_path}")
-            logger.info(f"Command: {' '.join(preferred_cmd)}")
-
-            result = subprocess.run(
-                preferred_cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            # Find actual output file
-            actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-            if actual_output and Path(actual_output).exists():
-                size = os.path.getsize(actual_output) / (1024 * 1024)
-                logger.info(f"YouTube download completed at {self.preferred_quality}p: {size:.2f} MB")
-                return str(Path(actual_output).absolute())
-
-            logger.warning(f"Preferred quality ({self.preferred_quality}p) download failed: {result.stderr}")
-            
-            # Remove any incomplete file
-            if actual_output and Path(actual_output).exists():
+                logger.debug(f"Command: {' '.join(cmd)}")
+                
                 try:
-                    os.remove(actual_output)
-                    logger.info(f"Removed incomplete/corrupted file: {actual_output}")
-                except Exception as e:
-                    logger.warning(f"Could not remove file {actual_output}: {e}")
-
-            # Second attempt: Fallback quality (720p)
-            logger.info(f"Trying fallback quality: {self.fallback_quality}p")
-            
-            fallback_cmd = self._build_base_command() + [
-                "-f", f"bestvideo[height<={self.fallback_quality}]+bestaudio/best[height<={self.fallback_quality}]",
-                "--merge-output-format", "mp4",
-                "-o", output_path,
-                "--no-check-certificate",
-                url,
-            ]
-
-            logger.info(f"Fallback command: {' '.join(fallback_cmd)}")
-
-            fallback_result = subprocess.run(
-                fallback_cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            actual_output = self._find_output_file(filename, fallback_result.stdout + fallback_result.stderr)
-            if actual_output and Path(actual_output).exists():
-                size = os.path.getsize(actual_output) / (1024 * 1024)
-                logger.info(f"Fallback download succeeded at {self.fallback_quality}p: {size:.2f} MB")
-                return str(Path(actual_output).absolute())
-
-            logger.error(f"Fallback quality ({self.fallback_quality}p) also failed")
-
-            # -------------------------
-            # LAST RESORT FALLBACK - Let yt-dlp choose any format
-            # -------------------------
-            logger.info("Trying last resort fallback (any format)")
-            
-            last_resort_cmd = self._build_base_command() + [
-                "-o", output_path,
-                url,
-            ]
-
-            logger.info(f"Last resort command: {' '.join(last_resort_cmd)}")
-
-            last_resort_result = subprocess.run(
-                last_resort_cmd,
-                capture_output=True,
-                text=True,
-            )
-
-            actual_output = self._find_output_file(filename, last_resort_result.stdout + last_resort_result.stderr)
-            if actual_output and Path(actual_output).exists():
-                size = os.path.getsize(actual_output) / (1024 * 1024)
-                logger.info(f"Last resort fallback succeeded: {size:.2f} MB")
-                return str(Path(actual_output).absolute())
-
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_per_attempt,
+                    )
+                    
+                    # Find actual output file
+                    actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+                    
+                    if actual_output and Path(actual_output).exists():
+                        size = os.path.getsize(actual_output) / (1024 * 1024)
+                        logger.info(f"Download succeeded at {attempt_name} quality: {size:.2f} MB")
+                        return str(Path(actual_output).absolute())
+                    
+                    if result.returncode != 0:
+                        logger.warning(f"Download attempt failed ({attempt_name}): {result.stderr[:500]}")
+                    
+                    # Clean up any partial files
+                    if actual_output and Path(actual_output).exists():
+                        try:
+                            os.remove(actual_output)
+                            logger.debug(f"Removed incomplete file: {actual_output}")
+                        except:
+                            pass
+                            
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Download attempt timed out ({attempt_name})")
+                    continue
+                    
             logger.error("All download attempts failed")
             return None
 
@@ -327,30 +301,71 @@ class YoutubeDownloader:
             logger.exception(f"Critical error in download: {e}")
             return None
 
+    async def _download_veo(self, url: str, filename: str) -> Optional[str]:
+        """Handle Veo video downloads"""
+        try:
+            output_pattern = f"{filename}.%(ext)s"
+            
+            veo_cmd = self._build_base_command(include_components=False)  # Veo might not need EJS
+            veo_cmd.extend([
+                "-f", "standard-1080p",
+                "--merge-output-format", "mp4",
+                "-o", output_pattern,
+                "--no-check-certificate",
+                url,
+            ])
+
+            logger.info("Downloading Veo video")
+            
+            result = subprocess.run(
+                veo_cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+
+            actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+            if actual_output and Path(actual_output).exists():
+                size = os.path.getsize(actual_output) / (1024 * 1024)
+                logger.info(f"Veo download completed: {size:.2f} MB")
+                return str(Path(actual_output).absolute())
+
+            logger.error(f"Veo download failed: {result.stderr[:500]}")
+            return None
+            
+        except Exception as e:
+            logger.exception(f"Error downloading Veo video: {e}")
+            return None
+
     def _find_output_file(self, base_filename: str, ytdlp_output: str) -> Optional[str]:
         """
         Extract the actual output filename from yt-dlp output
-        since we use %(ext)s pattern
         """
         try:
-            # Look for patterns like "Destination: filename.ext"
             import re
-            patterns = [
-                r'Destination:\s+([^\s]+\.(?:mp4|webm|mkv|avi|mov))',
-                r'Merging formats into "([^"]+)"',
-                r'\[download\]\s+([^\s]+\.(?:mp4|webm|mkv|avi|mov))\s+has already been downloaded',
-            ]
             
-            for pattern in patterns:
-                matches = re.findall(pattern, ytdlp_output)
-                if matches:
-                    return matches[-1]  # Return the last match (final output)
+            # Pattern for final merged file
+            merge_pattern = r'Merging formats into "([^"]+\.(?:mp4|webm|mkv|avi|mov))"'
+            merge_match = re.search(merge_pattern, ytdlp_output)
+            if merge_match:
+                return merge_match.group(1)
+            
+            # Pattern for destination files
+            dest_pattern = r'Destination:\s+([^\s]+\.(?:mp4|webm|mkv|avi|mov))'
+            dest_matches = re.findall(dest_pattern, ytdlp_output)
+            if dest_matches:
+                # Take the last one (likely the merged file)
+                return dest_matches[-1]
             
             # Fallback: Look for files with base_filename in current directory
             for ext in ['.mp4', '.webm', '.mkv', '.avi', '.mov']:
                 possible = f"{base_filename}{ext}"
                 if Path(possible).exists():
                     return possible
+                # Also try with different case
+                possible_lower = f"{base_filename.lower()}{ext}"
+                if Path(possible_lower).exists():
+                    return possible_lower
             
             return None
             
