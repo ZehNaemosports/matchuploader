@@ -18,11 +18,13 @@ class YoutubeDownloader:
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         use_tor: bool = False,
+        debug_formats: bool = False,
     ):
         self.preferred_quality = preferred_quality
-        self.fallback_quality = '720'  # Fixed fallback quality
+        self.fallback_quality = '720'
         self.cookies_path = cookies_path
         self.use_tor = use_tor
+        self.debug_formats = debug_formats
 
     def set_quality(self, preferred_quality: str, fallback_quality: str = '720'):
         self.preferred_quality = preferred_quality
@@ -43,29 +45,21 @@ class YoutubeDownloader:
             logger.info("Tor service started")
 
     def _build_base_command(self):
-        """
-        Base yt-dlp command used everywhere.
-        This guarantees:
-        - JS runtime
-        - Cookies
-        - Tor (if enabled)
-        """
         cmd = [
             "yt-dlp",
             "--no-playlist",
-            "--js-runtimes", "deno",
+            "--extractor-retries", "5",
+            "--fragment-retries", "5",
+            "--retries", "5",
         ]
 
-        # ALWAYS use cookies if available (Tor or not)
         if self.cookies_path and os.path.exists(self.cookies_path):
             cmd.extend(["--cookies", self.cookies_path])
 
         if self.use_tor:
-            # self._ensure_tor_running()
             cmd.extend([
                 "--proxy", "socks5://localhost:9050",
                 "--socket-timeout", "60",
-                "--retries", "10",
                 "--force-ipv4",
             ])
 
@@ -76,8 +70,6 @@ class YoutubeDownloader:
             cmd = self._build_base_command() + ["--list-formats", url]
 
             logger.info(f"Listing available formats for: {url}")
-            logger.info(f"Command: {' '.join(cmd)}")
-
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -95,67 +87,54 @@ class YoutubeDownloader:
             logger.exception(f"Error listing formats: {e}")
             return None
 
+    def _valid_file(self, path: str):
+        return Path(path).exists() and os.path.getsize(path) > 0
+
     async def download(self, url: str, filename: str) -> Optional[str]:
         try:
-            # List available formats first for debugging
-            await self.list_formats(url)
+            if self.debug_formats:
+                await self.list_formats(url)
 
             output_path = f"{filename}.mp4"
 
             # -------------------------
-            # VEO HANDLING (NO TOR)
+            # VEO HANDLING
             # -------------------------
             if "app.veo.co" in url:
-                veo_cmd = [
-                    "yt-dlp",
-                    "--no-playlist",
-                    "--js-runtimes", "deno",
-                ]
-
-                if self.cookies_path and os.path.exists(self.cookies_path):
-                    veo_cmd.extend(["--cookies", self.cookies_path])
+                veo_cmd = self._build_base_command()
 
                 veo_cmd.extend([
                     "-f", "standard-1080p",
                     "--merge-output-format", "mp4",
                     "-o", output_path,
-                    "--no-check-certificate",
                     url,
                 ])
 
-                logger.info("Downloading Veo video (Tor disabled)")
-                logger.info(f"Command: {' '.join(veo_cmd)}")
-
+                logger.info("Downloading Veo video")
                 result = subprocess.run(
                     veo_cmd,
                     capture_output=True,
                     text=True,
                 )
 
-                if result.returncode == 0 and Path(output_path).exists():
-                    size = os.path.getsize(output_path) / (1024 * 1024)
-                    logger.info(f"Veo download completed: {size:.2f} MB")
+                if result.returncode == 0 and self._valid_file(output_path):
                     return str(Path(output_path).absolute())
 
                 logger.error(f"Veo download failed: {result.stderr}")
                 return None
 
             # -------------------------
-            # YOUTUBE DOWNLOAD - Try 1080p first, fallback to 720p
+            # YOUTUBE DOWNLOAD
             # -------------------------
-            
-            # First attempt: Preferred quality (1080p)
+
             preferred_cmd = self._build_base_command() + [
                 "-f", f"bestvideo[height<={self.preferred_quality}]+bestaudio/best[height<={self.preferred_quality}]",
                 "--merge-output-format", "mp4",
                 "-o", output_path,
-                "--no-check-certificate",
                 url,
             ]
 
-            logger.info(f"Downloading YouTube video - Trying {self.preferred_quality}p first")
-            logger.info(f"Output path: {output_path}")
-            logger.info(f"Command: {' '.join(preferred_cmd)}")
+            logger.info(f"Trying preferred quality {self.preferred_quality}p")
 
             result = subprocess.run(
                 preferred_cmd,
@@ -163,32 +142,22 @@ class YoutubeDownloader:
                 text=True,
             )
 
-            if result.returncode == 0 and Path(output_path).exists():
-                size = os.path.getsize(output_path) / (1024 * 1024)
-                logger.info(f"YouTube download completed at {self.preferred_quality}p: {size:.2f} MB")
+            if result.returncode == 0 and self._valid_file(output_path):
                 return str(Path(output_path).absolute())
 
-            logger.warning(f"Preferred quality ({self.preferred_quality}p) download failed: {result.stderr}")
-            
-            if Path(output_path).exists():
-                try:
-                    os.remove(output_path)
-                    logger.info(f"Removed incomplete/corrupted file: {output_path}")
-                except Exception as e:
-                    logger.warning(f"Could not remove file {output_path}: {e}")
+            logger.warning("Preferred quality failed")
 
-            # Second attempt: Fallback quality (720p)
-            logger.info(f"Trying fallback quality: {self.fallback_quality}p")
-            
+            if Path(output_path).exists():
+                os.remove(output_path)
+
             fallback_cmd = self._build_base_command() + [
                 "-f", f"bestvideo[height<={self.fallback_quality}]+bestaudio/best[height<={self.fallback_quality}]",
                 "--merge-output-format", "mp4",
                 "-o", output_path,
-                "--no-check-certificate",
                 url,
             ]
 
-            logger.info(f"Fallback command: {' '.join(fallback_cmd)}")
+            logger.info(f"Trying fallback quality {self.fallback_quality}p")
 
             fallback_result = subprocess.run(
                 fallback_cmd,
@@ -196,25 +165,21 @@ class YoutubeDownloader:
                 text=True,
             )
 
-            if fallback_result.returncode == 0 and Path(output_path).exists():
-                size = os.path.getsize(output_path) / (1024 * 1024)
-                logger.info(f"Fallback download succeeded at {self.fallback_quality}p: {size:.2f} MB")
+            if fallback_result.returncode == 0 and self._valid_file(output_path):
                 return str(Path(output_path).absolute())
 
-            logger.error(f"Fallback quality ({self.fallback_quality}p) also failed")
+            logger.warning("Fallback failed")
 
-            # -------------------------
-            # LAST RESORT FALLBACK - Generic mp4
-            # -------------------------
-            logger.info("Trying last resort fallback (any mp4 format)")
-            
+            if Path(output_path).exists():
+                os.remove(output_path)
+
             last_resort_cmd = self._build_base_command() + [
                 "-f", "mp4",
                 "-o", output_path,
                 url,
             ]
 
-            logger.info(f"Last resort command: {' '.join(last_resort_cmd)}")
+            logger.info("Trying last resort mp4 format")
 
             last_resort_result = subprocess.run(
                 last_resort_cmd,
@@ -222,9 +187,7 @@ class YoutubeDownloader:
                 text=True,
             )
 
-            if last_resort_result.returncode == 0 and Path(output_path).exists():
-                size = os.path.getsize(output_path) / (1024 * 1024)
-                logger.info(f"Last resort fallback succeeded: {size:.2f} MB")
+            if last_resort_result.returncode == 0 and self._valid_file(output_path):
                 return str(Path(output_path).absolute())
 
             logger.error("All download attempts failed")
