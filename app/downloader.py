@@ -1,9 +1,10 @@
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import time
 import os
 import logging
+import re
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,13 +18,15 @@ class YoutubeDownloader:
         self,
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
+        facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
         use_tor: bool = False,
         use_remote_components: bool = True,
-        auto_update_components: bool = True,  # NEW: Auto-update EJS components
+        auto_update_components: bool = True,
     ):
         self.preferred_quality = preferred_quality
         self.fallback_quality = '720'
         self.cookies_path = cookies_path
+        self.facebook_cookies_path = facebook_cookies_path
         self.use_tor = use_tor
         self.use_remote_components = use_remote_components
         self.auto_update_components = auto_update_components
@@ -78,23 +81,38 @@ class YoutubeDownloader:
         except Exception as e:
             logger.warning(f"Could not update EJS components: {e}")
 
-    def _build_base_command(self, include_components: bool = True):
+    def _build_base_command(self, include_components: bool = True, is_facebook: bool = False):
         """
-        Base yt-dlp command used everywhere.
+        Base yt-dlp command with platform-specific options.
         """
         cmd = [
             "yt-dlp",
             "--no-playlist",
-            "--js-runtimes", "deno",
         ]
 
-        # Add remote components if enabled
-        if self.use_remote_components and include_components:
+        # Add JavaScript runtime (for sites that need it)
+        if not is_facebook:  # Facebook doesn't need JS runtime
+            cmd.extend(["--js-runtimes", "deno"])
+
+        # Add remote components if enabled and not Facebook
+        if self.use_remote_components and include_components and not is_facebook:
             cmd.extend(["--remote-components", "ejs:github"])
 
-        # Use cookies if available
-        if self.cookies_path and os.path.exists(self.cookies_path):
+        # Platform-specific cookie handling
+        if is_facebook and self.facebook_cookies_path and os.path.exists(self.facebook_cookies_path):
+            cmd.extend(["--cookies", self.facebook_cookies_path])
+            logger.info("Using Facebook cookies")
+        elif self.cookies_path and os.path.exists(self.cookies_path):
             cmd.extend(["--cookies", self.cookies_path])
+            logger.info("Using general cookies")
+
+        # Facebook-specific headers
+        if is_facebook:
+            cmd.extend([
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "--referer", "https://www.facebook.com/",
+                "--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ])
 
         if self.use_tor:
             cmd.extend([
@@ -105,6 +123,73 @@ class YoutubeDownloader:
             ])
 
         return cmd
+
+    def _get_facebook_formats(self, url: str):
+        """Get available formats for Facebook video"""
+        try:
+            cmd = self._build_base_command(is_facebook=True) + ["-F", url]
+            
+            logger.info(f"Getting Facebook formats for: {url}")
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            
+            if result.returncode == 0:
+                return self._parse_facebook_formats(result.stdout)
+            else:
+                logger.error(f"Failed to get Facebook formats: {result.stderr[:500]}")
+                return None
+                
+        except Exception as e:
+            logger.exception(f"Error getting Facebook formats: {e}")
+            return None
+
+    def _parse_facebook_formats(self, format_output: str) -> Dict[str, Any]:
+        """Parse Facebook format output to extract available qualities"""
+        formats = {
+            '1080': {'video_id': None, 'audio_id': None},
+            '720': {'video_id': None, 'audio_id': None},
+            '360': {'video_id': None, 'audio_id': None},
+            'audio': {'id': None},
+        }
+        
+        try:
+            lines = format_output.split('\n')
+            for line in lines:
+                # Look for video formats
+                if 'mp4' in line and 'video only' in line:
+                    # Parse resolution
+                    res_match = re.search(r'(\d+)x(\d+)', line)
+                    if res_match:
+                        height = int(res_match.group(2))
+                        # Extract format ID (first column)
+                        parts = line.split()
+                        if parts and parts[0].endswith('v'):
+                            format_id = parts[0]
+                            
+                            if height >= 1080:
+                                formats['1080']['video_id'] = format_id
+                            elif height >= 720:
+                                formats['720']['video_id'] = format_id
+                            elif height >= 360:
+                                formats['360']['video_id'] = format_id
+                
+                # Look for audio format
+                elif 'audio only' in line and 'm4a' in line:
+                    parts = line.split()
+                    if parts and parts[0].endswith('a'):
+                        formats['audio']['id'] = parts[0]
+                        
+            logger.info(f"Parsed Facebook formats: {formats}")
+            return formats
+            
+        except Exception as e:
+            logger.warning(f"Could not parse Facebook formats: {e}")
+            return formats
 
     async def update_ytdlp(self):
         """Update yt-dlp to latest version"""
@@ -177,7 +262,8 @@ class YoutubeDownloader:
     async def list_formats(self, url: str):
         """List available formats with timeout"""
         try:
-            cmd = self._build_base_command() + ["--list-formats", url]
+            is_facebook = 'facebook.com' in url
+            cmd = self._build_base_command(is_facebook=is_facebook) + ["-F", url]
 
             logger.info(f"Listing available formats for: {url}")
 
@@ -203,7 +289,7 @@ class YoutubeDownloader:
             return None
 
     async def download(self, url: str, filename: str, auto_update: bool = False, 
-                      max_attempts: int = 2, timeout_per_attempt: int = 300) -> Optional[str]:
+                      max_attempts: int = 3, timeout_per_attempt: int = 300) -> Optional[str]:
         """
         Download video with improved fallback logic
         """
@@ -217,13 +303,15 @@ class YoutubeDownloader:
             output_pattern = f"{filename}.%(ext)s"
             
             # -------------------------
-            # VEO HANDLING
+            # PLATFORM DETECTION
             # -------------------------
-            if "app.veo.co" in url:
+            if "facebook.com" in url:
+                return await self._download_facebook(url, filename, timeout_per_attempt)
+            elif "app.veo.co" in url:
                 return await self._download_veo(url, filename)
-
+            
             # -------------------------
-            # YOUTUBE DOWNLOAD
+            # YOUTUBE/GENERIC DOWNLOAD
             # -------------------------
             
             # First, get available formats to choose best one
@@ -239,7 +327,7 @@ class YoutubeDownloader:
             for quality, attempt_name in qualities_to_try:
                 logger.info(f"Attempting download: {attempt_name} ({quality}p if applicable)")
                 
-                cmd = self._build_base_command()
+                cmd = self._build_base_command(is_facebook=False)
                 
                 if quality:  # Specific quality requested
                     # Use more reliable format selection
@@ -301,12 +389,82 @@ class YoutubeDownloader:
             logger.exception(f"Critical error in download: {e}")
             return None
 
+    async def _download_facebook(self, url: str, filename: str, timeout: int) -> Optional[str]:
+        """Handle Facebook video downloads with quality fallback"""
+        try:
+            output_pattern = f"{filename}.%(ext)s"
+            
+            # Get available formats
+            formats = self._get_facebook_formats(url)
+            if not formats:
+                logger.error("Could not get Facebook formats")
+                return None
+            
+            # Try qualities in order: 1080p -> 720p -> 360p
+            qualities_to_try = [
+                ('1080', 'preferred 1080p'),
+                ('720', 'fallback 720p'),
+                ('360', 'fallback 360p'),
+            ]
+            
+            for quality_key, attempt_name in qualities_to_try:
+                video_id = formats.get(quality_key, {}).get('video_id')
+                audio_id = formats.get('audio', {}).get('id')
+                
+                if not video_id or not audio_id:
+                    logger.warning(f"{quality_key}p format not available, trying next...")
+                    continue
+                
+                logger.info(f"Attempting Facebook download: {attempt_name}")
+                
+                # Build Facebook-specific command
+                cmd = self._build_base_command(is_facebook=True)
+                cmd.extend([
+                    "-f", f"{video_id}+{audio_id}",
+                    "--merge-output-format", "mp4",
+                    "-o", output_pattern,
+                    "--socket-timeout", str(timeout),
+                    url,
+                ])
+
+                logger.debug(f"Facebook command: {' '.join(cmd)}")
+                
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+                    
+                    # Find actual output file
+                    actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+                    
+                    if actual_output and Path(actual_output).exists():
+                        size = os.path.getsize(actual_output) / (1024 * 1024)
+                        logger.info(f"Facebook download succeeded at {quality_key}p: {size:.2f} MB")
+                        return str(Path(actual_output).absolute())
+                    
+                    if result.returncode != 0:
+                        logger.warning(f"Facebook download attempt failed ({attempt_name}): {result.stderr[:500]}")
+                    
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Facebook download timed out ({attempt_name})")
+                    continue
+                    
+            logger.error("All Facebook download attempts failed")
+            return None
+            
+        except Exception as e:
+            logger.exception(f"Error downloading Facebook video: {e}")
+            return None
+
     async def _download_veo(self, url: str, filename: str) -> Optional[str]:
         """Handle Veo video downloads"""
         try:
             output_pattern = f"{filename}.%(ext)s"
             
-            veo_cmd = self._build_base_command(include_components=False)  # Veo might not need EJS
+            veo_cmd = self._build_base_command(include_components=False, is_facebook=False)
             veo_cmd.extend([
                 "-f", "standard-1080p",
                 "--merge-output-format", "mp4",
@@ -342,8 +500,6 @@ class YoutubeDownloader:
         Extract the actual output filename from yt-dlp output
         """
         try:
-            import re
-            
             # Pattern for final merged file
             merge_pattern = r'Merging formats into "([^"]+\.(?:mp4|webm|mkv|avi|mov))"'
             merge_match = re.search(merge_pattern, ytdlp_output)
