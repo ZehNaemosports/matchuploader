@@ -14,3 +14,8 @@ class Message(BaseModel):
 class MatchUploadMessage(Message):
     command: str = "Match_Upload"
     matchId: str = Field(..., alias="matchId")
+
+class MergeVideosMessage(Message):
+    command: str = "Merge_Video"
+    video1: str = Field(..., alias="video1")
+    video2: str = Field(.., alias="video2")
