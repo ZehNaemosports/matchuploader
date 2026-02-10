@@ -4,6 +4,8 @@ from app.data.data import Data
 from app.s3_client import S3client
 import re
 import logging
+from moviepy import VideoFileClip, concatenate_videoclips
+import asyncio
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -49,5 +51,24 @@ class MatchDownloader:
     
     async def upload_match_video(self, file_path: str, object_key: str):
         return await self.s3_client.upload_file(file_path, object_key)
+
+    async def merge_videos(self, video1: str, video2: str):
+        video1_path = self.youtube_downloader.download(video1, filename="vid1")
+        video2_path = self.youtube_downloader.download(video2, filename="vid2")
+
+        clip1 = VideoFileClip(video1_path)
+        clip2 = VideoFileClip(video2_path)
+
+        final_clip = concatenate_videoclips([clip1, clip2], method="compose")
+
+        output_name = "merged_video.mp4"
+        final_clip.write_videofile(output_name, codec="libx264", audio_codec="aac")
+
+        clip1.close()
+        clip2.close()
+        final_clip.close()
+
+        return output_name, video2_path, video1_path
+
         
 # curl -X GET "http://localhost:8000/api/matches/660e047d4e080294e44d5f3a/download"

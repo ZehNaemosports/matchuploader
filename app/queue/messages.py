@@ -18,4 +18,8 @@ class MatchUploadMessage(Message):
 class MergeVideosMessage(Message):
     command: str = "Merge_Video"
     video1: str = Field(..., alias="video1")
-    video2: str = Field(.., alias="video2")
+    video2: str = Field(..., alias="video2")
+
+class MergeRequest(BaseModel):
+    video1: str
+    video2: str

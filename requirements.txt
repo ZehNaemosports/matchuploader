@@ -3,12 +3,19 @@ anyio==4.9.0
 boto3==1.40.1
 botocore==1.40.1
 click==8.2.1
+decorator==5.2.1
 dnspython==2.7.0
 fastapi==0.116.1
 h11==0.16.0
 idna==3.10
+ImageIO==2.37.2
+imageio-ffmpeg==0.6.0
 jmespath==1.0.1
 motor==3.7.1
+moviepy==2.2.1
+numpy==2.4.2
+pillow==11.3.0
+proglog==0.1.12
 pydantic==2.11.7
 pydantic-settings==2.10.1
 pydantic_core==2.33.2
@@ -19,6 +26,7 @@ s3transfer==0.13.1
 six==1.17.0
 sniffio==1.3.1
 starlette==0.47.2
+tqdm==4.67.3
 typing-inspection==0.4.1
 typing_extensions==4.14.1
 urllib3==2.5.0

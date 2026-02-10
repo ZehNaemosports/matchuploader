@@ -43,6 +43,23 @@ class MessageProcessor:
                     self.sqs_client.delete_message(receipt_handle)
             else:
                 logger.info("Match_Upload message missing matchId.")
+
+        elif command=="Merge_Video":
+            video1 = message_body.get("video1")
+            video2 = message_body.get("video2")
+            merged_video, video2_path, video1_path = await self.match_downloader.merge_videos(video1, video2)
+            if merged_video:
+                object_key = os.path.basename(merged_video)
+                upload_url = await self.match_downloader.upload_match_video(str(merged_video), object_key)
+                if upload_url:
+                    logger.info(f"Successfully merged and upload video")
+                    self.sqs_client.delete_message(receipt_handle)
+                    Path(merged_video).unlink(missing_ok=True)
+                    Path(video2_path).unlink(missing_ok=True)
+                    Path(video1_path).unlink(missing_ok=True)
+                else:
+                    logger.info(f"Failed to merge and upload video")
+                    self.sqs_client.delete_message(receipt_handle)
         else:
             logger.info(f"Unknown command: {command}")
 
