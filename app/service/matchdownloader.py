@@ -53,8 +53,8 @@ class MatchDownloader:
         return await self.s3_client.upload_file(file_path, object_key)
 
     async def merge_videos(self, video1: str, video2: str):
-        video1_path = self.youtube_downloader.download(video1, filename="vid1")
-        video2_path = self.youtube_downloader.download(video2, filename="vid2")
+        video1_path = await self.youtube_downloader.download(video1, filename="vid1")
+        video2_path = await self.youtube_downloader.download(video2, filename="vid2")
 
         clip1 = VideoFileClip(video1_path)
         clip2 = VideoFileClip(video2_path)
