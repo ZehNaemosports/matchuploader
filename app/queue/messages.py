@@ -23,3 +23,4 @@ class MergeVideosMessage(Message):
 class MergeRequest(BaseModel):
     video1: str
     video2: str
+    output_name: str

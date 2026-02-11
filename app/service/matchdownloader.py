@@ -52,7 +52,7 @@ class MatchDownloader:
     async def upload_match_video(self, file_path: str, object_key: str):
         return await self.s3_client.upload_file(file_path, object_key)
 
-    async def merge_videos(self, video1: str, video2: str):
+    async def merge_videos(self, video1: str, video2: str, output_name: str=None):
         video1_path = await self.youtube_downloader.download(video1, filename="vid1")
         video2_path = await self.youtube_downloader.download(video2, filename="vid2")
 
@@ -60,8 +60,9 @@ class MatchDownloader:
         clip2 = VideoFileClip(video2_path)
 
         final_clip = concatenate_videoclips([clip1, clip2], method="compose")
+        if output_name is None:
+            output_name = "merged_video.mp4"
 
-        output_name = "merged_video.mp4"
         final_clip.write_videofile(output_name, codec="libx264", audio_codec="aac")
 
         clip1.close()

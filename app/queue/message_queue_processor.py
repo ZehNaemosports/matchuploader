@@ -47,7 +47,8 @@ class MessageProcessor:
         elif command=="Merge_Video":
             video1 = message_body.get("video1")
             video2 = message_body.get("video2")
-            merged_video, video2_path, video1_path = await self.match_downloader.merge_videos(video1, video2)
+            output_name = message_body.get("output_name")
+            merged_video, video2_path, video1_path = await self.match_downloader.merge_videos(video1, video2, output_name=output_name)
             if merged_video:
                 object_key = os.path.basename(merged_video)
                 upload_url = await self.match_downloader.upload_match_video(str(merged_video), object_key)
