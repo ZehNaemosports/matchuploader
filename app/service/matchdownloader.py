@@ -6,6 +6,8 @@ import re
 import logging
 from moviepy import VideoFileClip, concatenate_videoclips
 import asyncio
+import subprocess
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,22 +54,52 @@ class MatchDownloader:
     async def upload_match_video(self, file_path: str, object_key: str):
         return await self.s3_client.upload_file(file_path, object_key)
 
-    async def merge_videos(self, video1: str, video2: str, output_name: str=None):
+    async def merge_videos(self, video1: str, video2: str, output_name: str = None):
         video1_path = await self.youtube_downloader.download(video1, filename="vid1")
         video2_path = await self.youtube_downloader.download(video2, filename="vid2")
-
-        clip1 = VideoFileClip(video1_path)
-        clip2 = VideoFileClip(video2_path)
-
-        final_clip = concatenate_videoclips([clip1, clip2], method="compose")
+        
         if output_name is None:
             output_name = "merged_video.mp4"
 
-        final_clip.write_videofile(output_name, codec="libx264", audio_codec="aac")
+        list_path = "inputs.txt"
+        with open(list_path, "w") as f:
+            f.write(f"file '{os.path.abspath(video1_path)}'\n")
+            f.write(f"file '{os.path.abspath(video2_path)}'\n")
 
-        clip1.close()
-        clip2.close()
-        final_clip.close()
+        try:
+            cmd = [
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", 
+                "-i", list_path, "-c", "copy", output_name
+            ]
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await process.communicate()
+
+        except Exception as e:
+            
+            clip1 = VideoFileClip(video1_path)
+            clip2 = VideoFileClip(video2_path)
+            final_clip = concatenate_videoclips([clip1, clip2])
+            
+            final_clip.write_videofile(
+                output_name, 
+                codec="libx264", 
+                audio_codec="aac", 
+                threads=8, 
+                preset="ultrafast", 
+                ffmpeg_params=["-crf", "17"]
+            )
+            clip1.close()
+            clip2.close()
+            final_clip.close()
+        
+        finally:
+            if os.path.exists(list_path):
+                os.remove(list_path)
 
         return output_name, video2_path, video1_path
 

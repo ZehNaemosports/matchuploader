@@ -63,7 +63,7 @@ async def merge_videos(
         request: MergeRequest,
         sqsClient: SqsClient = Depends(get_sqs_client)
 ):
-    message = MergeVideosMessage(video1=request.video1, video2=request.video2)
+    message = MergeVideosMessage(video1=request.video1, video2=request.video2, output_name=request.output_name)
     message.set_post_date()
 
     message_body_json = json.dumps(message.to_dict())
