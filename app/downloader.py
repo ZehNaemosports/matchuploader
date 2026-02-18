@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 class YoutubeDownloader:
     def __init__(
-        self,
-        preferred_quality: str = '1080',
-        cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
-        facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
-        use_tor: bool = False,
-        use_remote_components: bool = True,
-        auto_update_components: bool = True,
+            self,
+            preferred_quality: str = '1080',
+            cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
+            facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
+            use_tor: bool = False,
+            use_remote_components: bool = True,
+            auto_update_components: bool = True,
     ):
         self.preferred_quality = preferred_quality
         self.fallback_quality = '720'
@@ -30,7 +30,7 @@ class YoutubeDownloader:
         self.use_tor = use_tor
         self.use_remote_components = use_remote_components
         self.auto_update_components = auto_update_components
-        
+
         # Auto-update components on init if enabled
         if auto_update_components:
             self._update_components_sync()
@@ -63,19 +63,19 @@ class YoutubeDownloader:
                 "--update",
                 "--quiet",
             ]
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
-            
+
             if result.returncode == 0:
                 logger.info("EJS components updated successfully")
             else:
                 logger.warning(f"EJS components update had issues: {result.stderr[:200]}")
-                
+
         except subprocess.TimeoutExpired:
             logger.warning("EJS components update timed out")
         except Exception as e:
@@ -109,7 +109,8 @@ class YoutubeDownloader:
         # Facebook-specific headers
         if is_facebook:
             cmd.extend([
-                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "--user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "--referer", "https://www.facebook.com/",
                 "--add-header", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             ])
@@ -128,22 +129,22 @@ class YoutubeDownloader:
         """Get available formats for Facebook video"""
         try:
             cmd = self._build_base_command(is_facebook=True) + ["-F", url]
-            
+
             logger.info(f"Getting Facebook formats for: {url}")
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
-            
+
             if result.returncode == 0:
                 return self._parse_facebook_formats(result.stdout)
             else:
                 logger.error(f"Failed to get Facebook formats: {result.stderr[:500]}")
                 return None
-                
+
         except Exception as e:
             logger.exception(f"Error getting Facebook formats: {e}")
             return None
@@ -156,7 +157,7 @@ class YoutubeDownloader:
             '360': {'video_id': None, 'audio_id': None},
             'audio': {'id': None},
         }
-        
+
         try:
             lines = format_output.split('\n')
             for line in lines:
@@ -170,23 +171,23 @@ class YoutubeDownloader:
                         parts = line.split()
                         if parts and parts[0].endswith('v'):
                             format_id = parts[0]
-                            
+
                             if height >= 1080:
                                 formats['1080']['video_id'] = format_id
                             elif height >= 720:
                                 formats['720']['video_id'] = format_id
                             elif height >= 360:
                                 formats['360']['video_id'] = format_id
-                
+
                 # Look for audio format
                 elif 'audio only' in line and 'm4a' in line:
                     parts = line.split()
                     if parts and parts[0].endswith('a'):
                         formats['audio']['id'] = parts[0]
-                        
+
             logger.info(f"Parsed Facebook formats: {formats}")
             return formats
-            
+
         except Exception as e:
             logger.warning(f"Could not parse Facebook formats: {e}")
             return formats
@@ -195,16 +196,16 @@ class YoutubeDownloader:
         """Update yt-dlp to latest version"""
         try:
             logger.info("Updating yt-dlp...")
-            
+
             update_cmd = ["pip", "install", "--upgrade", "yt-dlp"]
-            
+
             result = subprocess.run(
                 update_cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
-            
+
             if result.returncode == 0:
                 logger.info("yt-dlp updated successfully")
                 version_result = subprocess.run(
@@ -218,7 +219,7 @@ class YoutubeDownloader:
             else:
                 logger.error(f"Failed to update yt-dlp: {result.stderr[:500]}")
                 return False
-                
+
         except subprocess.TimeoutExpired:
             logger.error("yt-dlp update timed out")
             return False
@@ -230,28 +231,28 @@ class YoutubeDownloader:
         """Update remote components (EJS)"""
         try:
             logger.info("Updating remote components...")
-            
+
             update_cmd = [
                 "yt-dlp",
                 "--remote-components", "ejs:github",
                 "--update",
                 "--quiet",
             ]
-            
+
             result = subprocess.run(
                 update_cmd,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
-            
+
             if result.returncode == 0:
                 logger.info("Remote components updated successfully")
                 return True
             else:
                 logger.warning(f"Remote components update had issues: {result.stderr[:200]}")
                 return True  # Continue anyway
-                
+
         except subprocess.TimeoutExpired:
             logger.warning("Remote components update timed out")
             return True
@@ -288,8 +289,8 @@ class YoutubeDownloader:
             logger.exception(f"Error listing formats: {e}")
             return None
 
-    async def download(self, url: str, filename: str, auto_update: bool = False, 
-                      max_attempts: int = 3, timeout_per_attempt: int = 300) -> Optional[str]:
+    async def download(self, url: str, filename: str, auto_update: bool = False,
+                       max_attempts: int = 3, timeout_per_attempt: int = 300) -> Optional[str]:
         """
         Download video with improved fallback logic
         """
@@ -301,7 +302,7 @@ class YoutubeDownloader:
 
             # Use pattern for extension
             output_pattern = f"{filename}.%(ext)s"
-            
+
             # -------------------------
             # PLATFORM DETECTION
             # -------------------------
@@ -309,26 +310,26 @@ class YoutubeDownloader:
                 return await self._download_facebook(url, filename, timeout_per_attempt)
             elif "app.veo.co" in url:
                 return await self._download_veo(url, filename)
-            
+
             # -------------------------
             # YOUTUBE/GENERIC DOWNLOAD
             # -------------------------
-            
+
             # First, get available formats to choose best one
             formats_info = await self.list_formats(url)
-            
+
             # Try multiple quality attempts
             qualities_to_try = [
                 (self.preferred_quality, "preferred"),
                 (self.fallback_quality, "fallback"),
                 (None, "any")  # Last resort: any quality
             ]
-            
+
             for quality, attempt_name in qualities_to_try:
                 logger.info(f"Attempting download: {attempt_name} ({quality}p if applicable)")
-                
+
                 cmd = self._build_base_command(is_facebook=False)
-                
+
                 if quality:  # Specific quality requested
                     # Use more reliable format selection
                     format_spec = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best[height<={quality}]"
@@ -341,7 +342,7 @@ class YoutubeDownloader:
                         "-f", "bestvideo+bestaudio/best",
                         "--merge-output-format", "mp4",
                     ])
-                
+
                 cmd.extend([
                     "-o", output_pattern,
                     "--no-check-certificate",
@@ -350,7 +351,7 @@ class YoutubeDownloader:
                 ])
 
                 logger.debug(f"Command: {' '.join(cmd)}")
-                
+
                 try:
                     result = subprocess.run(
                         cmd,
@@ -358,18 +359,18 @@ class YoutubeDownloader:
                         text=True,
                         timeout=timeout_per_attempt,
                     )
-                    
+
                     # Find actual output file
                     actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-                    
+
                     if actual_output and Path(actual_output).exists():
                         size = os.path.getsize(actual_output) / (1024 * 1024)
                         logger.info(f"Download succeeded at {attempt_name} quality: {size:.2f} MB")
                         return str(Path(actual_output).absolute())
-                    
+
                     if result.returncode != 0:
                         logger.warning(f"Download attempt failed ({attempt_name}): {result.stderr[:500]}")
-                    
+
                     # Clean up any partial files
                     if actual_output and Path(actual_output).exists():
                         try:
@@ -377,11 +378,11 @@ class YoutubeDownloader:
                             logger.debug(f"Removed incomplete file: {actual_output}")
                         except:
                             pass
-                            
+
                 except subprocess.TimeoutExpired:
                     logger.warning(f"Download attempt timed out ({attempt_name})")
                     continue
-                    
+
             logger.error("All download attempts failed")
             return None
 
@@ -393,30 +394,30 @@ class YoutubeDownloader:
         """Handle Facebook video downloads with quality fallback"""
         try:
             output_pattern = f"{filename}.%(ext)s"
-            
+
             # Get available formats
             formats = self._get_facebook_formats(url)
             if not formats:
                 logger.error("Could not get Facebook formats")
                 return None
-            
+
             # Try qualities in order: 1080p -> 720p -> 360p
             qualities_to_try = [
                 ('1080', 'preferred 1080p'),
                 ('720', 'fallback 720p'),
                 ('360', 'fallback 360p'),
             ]
-            
+
             for quality_key, attempt_name in qualities_to_try:
                 video_id = formats.get(quality_key, {}).get('video_id')
                 audio_id = formats.get('audio', {}).get('id')
-                
+
                 if not video_id or not audio_id:
                     logger.warning(f"{quality_key}p format not available, trying next...")
                     continue
-                
+
                 logger.info(f"Attempting Facebook download: {attempt_name}")
-                
+
                 # Build Facebook-specific command
                 cmd = self._build_base_command(is_facebook=True)
                 cmd.extend([
@@ -428,7 +429,7 @@ class YoutubeDownloader:
                 ])
 
                 logger.debug(f"Facebook command: {' '.join(cmd)}")
-                
+
                 try:
                     result = subprocess.run(
                         cmd,
@@ -436,63 +437,77 @@ class YoutubeDownloader:
                         text=True,
                         timeout=timeout,
                     )
-                    
+
                     # Find actual output file
                     actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-                    
+
                     if actual_output and Path(actual_output).exists():
                         size = os.path.getsize(actual_output) / (1024 * 1024)
                         logger.info(f"Facebook download succeeded at {quality_key}p: {size:.2f} MB")
                         return str(Path(actual_output).absolute())
-                    
+
                     if result.returncode != 0:
                         logger.warning(f"Facebook download attempt failed ({attempt_name}): {result.stderr[:500]}")
-                    
+
                 except subprocess.TimeoutExpired:
                     logger.warning(f"Facebook download timed out ({attempt_name})")
                     continue
-                    
+
             logger.error("All Facebook download attempts failed")
             return None
-            
+
         except Exception as e:
             logger.exception(f"Error downloading Facebook video: {e}")
             return None
 
     async def _download_veo(self, url: str, filename: str) -> Optional[str]:
-        """Handle Veo video downloads"""
+        """Handle Veo video downloads with quality fallback and 416 error handling"""
         try:
             output_pattern = f"{filename}.%(ext)s"
-            
-            veo_cmd = self._build_base_command(include_components=False, is_facebook=False)
-            veo_cmd.extend([
-                "-f", "standard-1080p",
-                "--merge-output-format", "mp4",
-                "-o", output_pattern,
-                "--no-check-certificate",
-                url,
-            ])
 
-            logger.info("Downloading Veo video")
-            
-            result = subprocess.run(
-                veo_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
+            # Quality priority for Veo
+            veo_qualities = ["standard-1080p", "standard-720p", "standard-480p", "best"]
 
-            actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-            if actual_output and Path(actual_output).exists():
-                size = os.path.getsize(actual_output) / (1024 * 1024)
-                logger.info(f"Veo download completed: {size:.2f} MB")
-                return str(Path(actual_output).absolute())
+            for quality in veo_qualities:
+                logger.info(f"Attempting Veo download with quality: {quality}")
 
-            logger.error(f"Veo download failed: {result.stderr[:500]}")
+                veo_cmd = self._build_base_command(include_components=False, is_facebook=False)
+                veo_cmd.extend([
+                    "-f", quality,
+                    "--merge-output-format", "mp4",
+                    "-o", output_pattern,
+                    "--no-check-certificate",
+                    "--no-continue",  # Prevents 416 errors by starting fresh for each quality attempt
+                    url,
+                ])
+
+                try:
+                    result = subprocess.run(
+                        veo_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+
+                    actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+                    if actual_output and Path(actual_output).exists():
+                        size = os.path.getsize(actual_output) / (1024 * 1024)
+                        logger.info(f"Veo download completed ({quality}): {size:.2f} MB")
+                        return str(Path(actual_output).absolute())
+
+                    logger.warning(f"Veo quality {quality} failed or unavailable, trying next fallback...")
+                    if result.returncode != 0:
+                        logger.debug(f"Veo error details: {result.stderr[:200]}")
+
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Veo download timed out for quality: {quality}")
+                    continue
+
+            logger.error("All Veo download attempts (1080p, 720p, 480p, best) failed")
             return None
-            
+
         except Exception as e:
-            logger.exception(f"Error downloading Veo video: {e}")
+            logger.exception(f"Critical error downloading Veo video: {e}")
             return None
 
     def _find_output_file(self, base_filename: str, ytdlp_output: str) -> Optional[str]:
@@ -505,14 +520,14 @@ class YoutubeDownloader:
             merge_match = re.search(merge_pattern, ytdlp_output)
             if merge_match:
                 return merge_match.group(1)
-            
+
             # Pattern for destination files
             dest_pattern = r'Destination:\s+([^\s]+\.(?:mp4|webm|mkv|avi|mov))'
             dest_matches = re.findall(dest_pattern, ytdlp_output)
             if dest_matches:
                 # Take the last one (likely the merged file)
                 return dest_matches[-1]
-            
+
             # Fallback: Look for files with base_filename in current directory
             for ext in ['.mp4', '.webm', '.mkv', '.avi', '.mov']:
                 possible = f"{base_filename}{ext}"
@@ -522,9 +537,9 @@ class YoutubeDownloader:
                 possible_lower = f"{base_filename.lower()}{ext}"
                 if Path(possible_lower).exists():
                     return possible_lower
-            
+
             return None
-            
+
         except Exception as e:
             logger.warning(f"Could not parse output filename: {e}")
             return None
