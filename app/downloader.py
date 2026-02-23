@@ -43,18 +43,20 @@ class YoutubeDownloader:
             logger.warning(f"Could not update EJS components: {e}")
 
     def _build_base_command(self, include_components: bool = True, is_facebook: bool = False):
+        """Builds the core command with proxies, cookies, and client bypasses."""
         cmd = ["yt-dlp", "--no-playlist"]
 
         if not is_facebook:
+            # The ios/web client bypass is critical for current YouTube bot detection
             cmd.extend([
                 "--js-runtimes", "deno",
-                # Bypass: Use the iOS player client which is less restricted
                 "--extractor-args", "youtube:player_client=ios,web"
             ])
 
         if self.use_remote_components and include_components and not is_facebook:
             cmd.extend(["--remote-components", "ejs:github"])
 
+        # Cookie handling
         if is_facebook and self.facebook_cookies_path and os.path.exists(self.facebook_cookies_path):
             cmd.extend(["--cookies", self.facebook_cookies_path])
         elif self.cookies_path and os.path.exists(self.cookies_path):
@@ -69,85 +71,105 @@ class YoutubeDownloader:
             ])
 
         if self.use_tor:
-            # Added proxy log for visibility
             cmd.extend(["--proxy", "socks5://127.0.0.1:9050"])
 
         return cmd
 
     async def list_formats(self, url: str):
+        """Fetches available formats for logging/debugging."""
         try:
             is_facebook = 'facebook.com' in url
             cmd = self._build_base_command(is_facebook=is_facebook) + ["-F", url]
 
-            # COMMAND LOG
             logger.info(f"RUNNING FORMAT LIST CMD: {' '.join(cmd)}")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
             if result.returncode == 0:
                 return result.stdout
-            logger.warning(f"Failed to retrieve formats. Error: {result.stderr[:200]}")
+            logger.warning(f"Failed to retrieve formats for {url}. Error: {result.stderr[:200]}")
             return None
         except Exception as e:
             logger.error(f"Error listing formats: {e}")
             return None
 
     async def _download_veo(self, url: str, filename: str) -> Optional[str]:
+        """Veo specific logic: Targets 'standard' broadcast views and avoids panoramas."""
         try:
-            logger.info(f"--- [VEO] Processing: {url} ---")
+            logger.info(f"--- [VEO] Starting download: {url} ---")
             formats_output = await self.list_formats(url)
-            if formats_output: logger.info(f"Available Veo formats:\n{formats_output}")
+            if formats_output:
+                logger.info(f"Available Veo formats:\n{formats_output}")
 
             output_pattern = f"{filename}.%(ext)s"
-            veo_qualities = ["standard-1080p", "standard-720p",
-                             "bestvideo[format_id^=standard]+bestaudio/best[format_id^=standard]"]
+            # Priority: Standard 1080p -> Standard 720p -> Any Standard broadcast
+            veo_qualities = [
+                "standard-1080p",
+                "standard-720p",
+                "bestvideo[format_id^=standard]+bestaudio/best[format_id^=standard]",
+                "bestvideo+bestaudio/best"
+            ]
 
             for quality in veo_qualities:
+                logger.info(f"Attempting Veo Quality: {quality}")
                 veo_cmd = self._build_base_command(include_components=False, is_facebook=False)
-                veo_cmd.extend(
-                    ["-f", quality, "--merge-output-format", "mp4", "-o", output_pattern, "--no-check-certificate",
-                     "--no-continue", url])
+                veo_cmd.extend([
+                    "-f", quality,
+                    "--merge-output-format", "mp4",
+                    "-o", output_pattern,
+                    "--no-check-certificate",
+                    "--no-continue",
+                    url
+                ])
 
-                # COMMAND LOG
                 logger.info(f"RUNNING VEO DOWNLOAD CMD: {' '.join(veo_cmd)}")
 
                 result = subprocess.run(veo_cmd, capture_output=True, text=True, timeout=1800)
                 actual_output = self._find_output_file(filename, result.stdout + result.stderr)
                 if actual_output and Path(actual_output).exists():
+                    logger.info(f"Veo download success: {actual_output}")
                     return str(Path(actual_output).absolute())
             return None
         except Exception as e:
-            logger.error(f"Veo failed: {e}")
+            logger.error(f"Veo download failed: {e}")
             return None
 
     async def _download_facebook(self, url: str, filename: str, timeout: int) -> Optional[str]:
+        """Facebook logic: Simple download with standard headers."""
         try:
-            logger.info(f"--- [FACEBOOK] Processing: {url} ---")
+            logger.info(f"--- [FACEBOOK] Starting download: {url} ---")
+            formats_output = await self.list_formats(url)
+            if formats_output:
+                logger.info(f"Available Facebook formats:\n{formats_output}")
+
             output_pattern = f"{filename}.%(ext)s"
             cmd = self._build_base_command(is_facebook=True)
             cmd.extend(["-o", output_pattern, "--merge-output-format", "mp4", url])
 
-            # COMMAND LOG
             logger.info(f"RUNNING FACEBOOK DOWNLOAD CMD: {' '.join(cmd)}")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             actual_output = self._find_output_file(filename, result.stdout + result.stderr)
-            return str(Path(actual_output).absolute()) if actual_output else None
+
+            if actual_output and Path(actual_output).exists():
+                logger.info(f"Facebook download success: {actual_output}")
+                return str(Path(actual_output).absolute())
+            return None
         except Exception as e:
             logger.error(f"Facebook error: {e}")
             return None
 
     async def download(self, url: str, filename: str) -> Optional[str]:
+        """YouTube/Generic logic: Dynamic quality selection with auto-merging."""
         try:
             if "app.veo.co" in url: return await self._download_veo(url, filename)
             if "facebook.com" in url: return await self._download_facebook(url, filename, 300)
 
-            logger.info(f"--- [YOUTUBE/GENERIC] Processing: {url} ---")
+            logger.info(f"--- [YOUTUBE/GENERIC] Starting download: {url} ---")
             formats_output = await self.list_formats(url)
-            if formats_output: logger.info(f"Available YouTube formats:\n{formats_output}")
+            if formats_output:
+                logger.info(f"Available YouTube formats:\n{formats_output}")
 
             output_pattern = f"{filename}.%(ext)s"
-
-            # Revised qualities: Allow any video format, but force merge to MP4
             qualities_to_try = [
                 (self.preferred_quality, "preferred"),
                 (self.fallback_quality, "fallback"),
@@ -157,9 +179,9 @@ class YoutubeDownloader:
             for quality, name in qualities_to_try:
                 cmd = self._build_base_command(is_facebook=False)
 
+                # We allow it to pick the best video regardless of extension (WebM/VP9)
+                # but force the final merge into MP4 so you get the highest quality.
                 if quality:
-                    # REMOVED [ext=mp4] restriction from the source to allow 1080p/720p selection
-                    # but kept --merge-output-format mp4 to ensure the final file is what you want.
                     format_spec = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
                     cmd.extend(["-f", format_spec, "--merge-output-format", "mp4"])
                 else:
@@ -169,15 +191,14 @@ class YoutubeDownloader:
 
                 logger.info(f"RUNNING YOUTUBE DOWNLOAD CMD ({name}): {' '.join(cmd)}")
 
-                # Increased timeout for high-quality files
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-
                 actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+
                 if actual_output and Path(actual_output).exists():
-                    logger.info(f"Successfully downloaded {name} quality: {actual_output}")
+                    logger.info(f"YouTube success: {actual_output}")
                     return str(Path(actual_output).absolute())
 
-                logger.warning(f"YouTube {name} quality attempt failed, trying next...")
+                logger.warning(f"YouTube {name} quality failed, trying next fallback...")
 
             return None
         except Exception as e:
@@ -185,6 +206,7 @@ class YoutubeDownloader:
             return None
 
     def _find_output_file(self, base_filename: str, ytdlp_output: str) -> Optional[str]:
+        """Helper to find the resulting filename after yt-dlp merging/naming."""
         try:
             merge_match = re.search(r'Merging formats into "([^"]+\.(?:mp4|webm|mkv))"', ytdlp_output)
             if merge_match: return merge_match.group(1)
