@@ -146,26 +146,39 @@ class YoutubeDownloader:
             if formats_output: logger.info(f"Available YouTube formats:\n{formats_output}")
 
             output_pattern = f"{filename}.%(ext)s"
-            qualities_to_try = [(self.preferred_quality, "preferred"), (self.fallback_quality, "fallback"),
-                                (None, "any")]
+
+            # Revised qualities: Allow any video format, but force merge to MP4
+            qualities_to_try = [
+                (self.preferred_quality, "preferred"),
+                (self.fallback_quality, "fallback"),
+                (None, "any")
+            ]
 
             for quality, name in qualities_to_try:
                 cmd = self._build_base_command(is_facebook=False)
+
                 if quality:
-                    format_spec = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best"
+                    # REMOVED [ext=mp4] restriction from the source to allow 1080p/720p selection
+                    # but kept --merge-output-format mp4 to ensure the final file is what you want.
+                    format_spec = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
                     cmd.extend(["-f", format_spec, "--merge-output-format", "mp4"])
                 else:
                     cmd.extend(["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"])
 
                 cmd.extend(["-o", output_pattern, "--no-check-certificate", url])
 
-                # COMMAND LOG
                 logger.info(f"RUNNING YOUTUBE DOWNLOAD CMD ({name}): {' '.join(cmd)}")
 
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                # Increased timeout for high-quality files
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+
                 actual_output = self._find_output_file(filename, result.stdout + result.stderr)
                 if actual_output and Path(actual_output).exists():
+                    logger.info(f"Successfully downloaded {name} quality: {actual_output}")
                     return str(Path(actual_output).absolute())
+
+                logger.warning(f"YouTube {name} quality attempt failed, trying next...")
+
             return None
         except Exception as e:
             logger.exception(f"General download error: {e}")
