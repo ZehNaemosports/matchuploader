@@ -61,8 +61,22 @@ class MessageProcessor:
                 else:
                     logger.info(f"Failed to merge and upload video")
                     self.sqs_client.delete_message(receipt_handle)
+        elif command=="Download_Video":
+            link = message_body.get("link")
+            output_name = message_body.get("output_name")
+            downloaded_video = await self.match_downloader.download_video(link, output_name=output_name)
+            if downloaded_video:
+                object_key = os.path.basename(downloaded_video)
+                upload_url = await self.match_downloader.upload_match_video(str(downloaded_video), object_key)
+                if upload_url:
+                    logger.info(f"Successfully downloaded and uploaded video")
+                    self.sqs_client.delete_message(receipt_handle)
+                    Path(downloaded_video).unlink(missing_ok=True)
+                else:
+                    logger.info(f"Failed to download video")
+                    self.sqs_client.delete_message(receipt_handle)
         else:
-            logger.info(f"Unknown command: {command}")
+            logger.info("Unknown command")
 
     async def poll_messages(self):
         logger.info("Starting message polling...")

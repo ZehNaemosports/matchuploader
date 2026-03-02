@@ -18,8 +18,8 @@ class YoutubeDownloader:
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
-        use_tor: bool = False,  # 🔥 Disabled by default (Tor causes 360p manifests)
-        use_remote_components: bool = False,  # Not needed in most 2026 setups
+        use_tor: bool = False,
+        use_remote_components: bool = False,
         auto_update_components: bool = False,
     ):
         self.preferred_quality = preferred_quality
@@ -40,15 +40,8 @@ class YoutubeDownloader:
             logger.warning(f"Could not update yt-dlp: {e}")
 
     def _build_base_command(self, is_facebook: bool = False):
-        """
-        Clean 2026-safe base command.
-        No forced iOS client.
-        No JS runtime forcing.
-        Let yt-dlp auto-detect best working client.
-        """
         cmd = ["yt-dlp", "--no-playlist"]
 
-        # Optional remote components (rarely needed now)
         if self.use_remote_components and not is_facebook:
             cmd.extend(["--remote-components", "ejs:github"])
 
@@ -66,15 +59,32 @@ class YoutubeDownloader:
                 "--referer", "https://www.facebook.com/",
             ])
 
-        # Optional Tor (NOT recommended for YouTube)
         if self.use_tor:
             cmd.extend(["--proxy", "socks5://127.0.0.1:9050"])
 
         return cmd
 
+    def _normalize_drive_url(self, url: str) -> str:
+        """
+        Converts:
+        https://drive.google.com/file/d/<ID>/view?...
+        into:
+        https://drive.google.com/uc?id=<ID>
+        """
+        match = re.search(r'/file/d/([^/]+)/', url)
+        if match:
+            file_id = match.group(1)
+            return f"https://drive.google.com/uc?id={file_id}"
+        return url
+
     async def list_formats(self, url: str):
         try:
             is_facebook = 'facebook.com' in url
+            is_drive = 'drive.google.com' in url
+
+            if is_drive:
+                url = self._normalize_drive_url(url)
+
             cmd = self._build_base_command(is_facebook=is_facebook) + ["-F", url]
 
             logger.info(f"RUNNING FORMAT LIST CMD: {' '.join(cmd)}")
@@ -85,6 +95,7 @@ class YoutubeDownloader:
 
             logger.warning(f"Format listing failed: {result.stderr[:300]}")
             return None
+
         except Exception as e:
             logger.error(f"Format listing error: {e}")
             return None
@@ -115,10 +126,45 @@ class YoutubeDownloader:
             logger.error(f"Facebook error: {e}")
             return None
 
+    async def _download_google_drive(self, url: str, filename: str) -> Optional[str]:
+        try:
+            logger.info(f"[GOOGLE DRIVE] Downloading: {url}")
+
+            url = self._normalize_drive_url(url)
+            output_pattern = f"{filename}.%(ext)s"
+
+            cmd = self._build_base_command()
+
+            cmd.extend([
+                "-f", "best",
+                "--merge-output-format", "mp4",
+                "-o", output_pattern,
+                url
+            ])
+
+            logger.info(f"RUNNING CMD: {' '.join(cmd)}")
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+            actual_output = self._find_output_file(filename, result.stdout + result.stderr)
+
+            if actual_output and Path(actual_output).exists():
+                logger.info(f"Drive download success: {actual_output}")
+                return str(Path(actual_output).absolute())
+
+            logger.warning(f"Drive download failed: {result.stderr[:300]}")
+            return None
+
+        except Exception as e:
+            logger.exception(f"Google Drive error: {e}")
+            return None
+
     async def download(self, url: str, filename: str) -> Optional[str]:
         try:
             if "facebook.com" in url:
                 return await self._download_facebook(url, filename)
+
+            if "drive.google.com" in url:
+                return await self._download_google_drive(url, filename)
 
             logger.info(f"[YOUTUBE/GENERIC] Downloading: {url}")
 
@@ -131,11 +177,9 @@ class YoutubeDownloader:
             ]
 
             for quality in qualities_to_try:
-
                 cmd = self._build_base_command()
 
                 if quality:
-                    # 🔥 DASH-first strategy (forces real HD)
                     format_spec = (
                         f"bestvideo[height<={quality}][vcodec^=avc1]"
                         f"+bestaudio[acodec^=mp4a]"

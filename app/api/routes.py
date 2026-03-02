@@ -4,7 +4,7 @@ import os
 from app.dependencies import get_match_downloader, get_sqs_client
 from app.queue.sqs_client import SqsClient
 from app.service.matchdownloader import MatchDownloader
-from app.queue.messages import MatchUploadMessage, MergeVideosMessage, MergeRequest
+from app.queue.messages import MatchUploadMessage, MergeVideosMessage, MergeRequest, DownloadVideoMessage
 import json
 
 router = APIRouter()
@@ -69,4 +69,15 @@ async def merge_videos(
     message_body_json = json.dumps(message.to_dict())
     response = sqsClient.send_message(message_body_json)
 
+    return response.get('MessageId')
+
+@router.post("/download_video")
+async def download_video(
+        request: DownloadVideoMessage,
+        sqsClient: SqsClient = Depends(get_sqs_client)
+):
+    message = DownloadVideoMessage(link=request.link, output_name=request.output_name)
+    message.set_post_date()
+    message_body_json = json.dumps(message.to_dict())
+    response = sqsClient.send_message(message_body_json)
     return response.get('MessageId')

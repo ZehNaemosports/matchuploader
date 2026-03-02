@@ -25,3 +25,13 @@ class MergeRequest(BaseModel):
     video1: str
     video2: str
     output_name: str
+
+class DownloadVideoMessage(Message):
+    command: str = "Download_Video"
+    link: str = Field(..., alias="link")
+    output_name: str = Field(..., alias="output_name")
+
+class DownloadVideoRequestMessage(Message):
+    command: str = "Download_Video"
+    link: str = Field(..., alias="link")
+    output_name: str = Field(..., alias="output_name")

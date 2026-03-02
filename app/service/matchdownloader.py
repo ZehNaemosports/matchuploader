@@ -103,5 +103,10 @@ class MatchDownloader:
 
         return output_name, video2_path, video1_path
 
+    async def download_video(self, link: str, output_name: str = None):
+        logger.info(f"Downloading video for match {link}")
+        path = await self.youtube_downloader.download(link, filename=output_name)
+        return path
+
         
 # curl -X GET "http://localhost:8000/api/matches/660e047d4e080294e44d5f3a/download"
