@@ -18,7 +18,7 @@ class YoutubeDownloader:
         preferred_quality: str = '1080',
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
-        use_tor: bool = False,
+        use_tor: bool = True,
         use_remote_components: bool = False,
         auto_update_components: bool = False,
     ):
