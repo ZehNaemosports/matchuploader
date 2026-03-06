@@ -39,10 +39,16 @@ class YoutubeDownloader:
             "--no-playlist",
             "--newline",
             "--progress",
+
+            # stability
             "--retries", "10",
             "--fragment-retries", "10",
+
+            # youtube challenge solver
             "--remote-components", "ejs:github",
-            "--extractor-args", "youtube:player_client=android,web"
+
+            # force web client (not android)
+            "--extractor-args", "youtube:player_client=web"
         ]
 
         # cookies
@@ -70,7 +76,7 @@ class YoutubeDownloader:
     # Normalize Google Drive URLs
     # --------------------------------------------------------
 
-    def _normalize_drive_url(self, url: str):
+    def _normalize_drive_url(self, url: str) -> str:
 
         match = re.search(r"/file/d/([^/]+)/", url)
 
@@ -107,14 +113,11 @@ class YoutubeDownloader:
                 timeout=120
             )
 
-            logger.info("yt-dlp stdout:")
+            logger.info("yt-dlp output:")
             logger.info(result.stdout)
 
             if result.stderr:
-                logger.warning("yt-dlp stderr:")
                 logger.warning(result.stderr)
-
-            logger.info(f"Return code: {result.returncode}")
 
             if result.returncode == 0:
                 return result.stdout
@@ -140,12 +143,9 @@ class YoutubeDownloader:
             cmd = self._build_base_command()
 
             cmd.extend([
-                "-f",
-                "best",
-                "--merge-output-format",
-                "mp4",
-                "-o",
-                output_pattern,
+                "-f", "best",
+                "--merge-output-format", "mp4",
+                "-o", output_pattern,
                 url
             ])
 
@@ -163,8 +163,6 @@ class YoutubeDownloader:
             if result.stderr:
                 logger.warning(result.stderr)
 
-            logger.info(f"Return code: {result.returncode}")
-
             output_text = result.stdout + result.stderr
 
             actual_output = self._find_output_file(filename, output_text)
@@ -172,8 +170,6 @@ class YoutubeDownloader:
             if actual_output and Path(actual_output).exists():
                 logger.info(f"Drive download success: {actual_output}")
                 return str(Path(actual_output).absolute())
-
-            logger.error("Drive download failed: output file not detected")
 
             return None
 
@@ -194,12 +190,9 @@ class YoutubeDownloader:
             cmd = self._build_base_command(is_facebook=True)
 
             cmd.extend([
-                "-f",
-                "best",
-                "--merge-output-format",
-                "mp4",
-                "-o",
-                output_pattern,
+                "-f", "best",
+                "--merge-output-format", "mp4",
+                "-o", output_pattern,
                 url
             ])
 
@@ -217,17 +210,12 @@ class YoutubeDownloader:
             if result.stderr:
                 logger.warning(result.stderr)
 
-            logger.info(f"Return code: {result.returncode}")
-
             output_text = result.stdout + result.stderr
 
             actual_output = self._find_output_file(filename, output_text)
 
             if actual_output and Path(actual_output).exists():
-                logger.info(f"Facebook download success: {actual_output}")
                 return str(Path(actual_output).absolute())
-
-            logger.error("Facebook download failed: output file not detected")
 
             return None
 
@@ -264,20 +252,14 @@ class YoutubeDownloader:
                 cmd = self._build_base_command()
 
                 if quality:
-
-                    format_spec = f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
-
+                    format_spec = f"bv*[height<={quality}]+ba/b[height<={quality}]"
                 else:
-
-                    format_spec = "bestvideo+bestaudio/best"
+                    format_spec = "bv*+ba/b"
 
                 cmd.extend([
-                    "-f",
-                    format_spec,
-                    "--merge-output-format",
-                    "mp4",
-                    "-o",
-                    output_pattern,
+                    "-f", format_spec,
+                    "--merge-output-format", "mp4",
+                    "-o", output_pattern,
                     url
                 ])
 
@@ -294,8 +276,6 @@ class YoutubeDownloader:
 
                 if result.stderr:
                     logger.warning(result.stderr)
-
-                logger.info(f"Return code: {result.returncode}")
 
                 output_text = result.stdout + result.stderr
 
