@@ -48,7 +48,7 @@ class YoutubeDownloader:
             "--remote-components", "ejs:github",
 
             # force web client (not android)
-            "--extractor-args", "youtube:player_client=web"
+            "--extractor-args", "youtube:player_client=web,web_safari"
         ]
 
         # cookies
