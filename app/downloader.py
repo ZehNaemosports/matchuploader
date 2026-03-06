@@ -39,6 +39,10 @@ class YoutubeDownloader:
             "--no-playlist",
             "--newline",
             "--progress",
+            "--retries", "10",
+            "--fragment-retries", "10",
+            "--remote-components", "ejs:github",
+            "--extractor-args", "youtube:player_client=android,web"
         ]
 
         # cookies
@@ -66,7 +70,7 @@ class YoutubeDownloader:
     # Normalize Google Drive URLs
     # --------------------------------------------------------
 
-    def _normalize_drive_url(self, url: str) -> str:
+    def _normalize_drive_url(self, url: str):
 
         match = re.search(r"/file/d/([^/]+)/", url)
 
@@ -103,11 +107,14 @@ class YoutubeDownloader:
                 timeout=120
             )
 
-            logger.info("yt-dlp output:")
+            logger.info("yt-dlp stdout:")
             logger.info(result.stdout)
 
             if result.stderr:
+                logger.warning("yt-dlp stderr:")
                 logger.warning(result.stderr)
+
+            logger.info(f"Return code: {result.returncode}")
 
             if result.returncode == 0:
                 return result.stdout
@@ -156,6 +163,8 @@ class YoutubeDownloader:
             if result.stderr:
                 logger.warning(result.stderr)
 
+            logger.info(f"Return code: {result.returncode}")
+
             output_text = result.stdout + result.stderr
 
             actual_output = self._find_output_file(filename, output_text)
@@ -163,6 +172,8 @@ class YoutubeDownloader:
             if actual_output and Path(actual_output).exists():
                 logger.info(f"Drive download success: {actual_output}")
                 return str(Path(actual_output).absolute())
+
+            logger.error("Drive download failed: output file not detected")
 
             return None
 
@@ -206,12 +217,17 @@ class YoutubeDownloader:
             if result.stderr:
                 logger.warning(result.stderr)
 
+            logger.info(f"Return code: {result.returncode}")
+
             output_text = result.stdout + result.stderr
 
             actual_output = self._find_output_file(filename, output_text)
 
             if actual_output and Path(actual_output).exists():
+                logger.info(f"Facebook download success: {actual_output}")
                 return str(Path(actual_output).absolute())
+
+            logger.error("Facebook download failed: output file not detected")
 
             return None
 
@@ -278,6 +294,8 @@ class YoutubeDownloader:
 
                 if result.stderr:
                     logger.warning(result.stderr)
+
+                logger.info(f"Return code: {result.returncode}")
 
                 output_text = result.stdout + result.stderr
 
