@@ -32,7 +32,7 @@ class S3client:
             logger.info(f"File uploaded successfully to: {file_url}")
             return file_url
         except Exception as e:
-            self.logger.error(f"Error uploading file: {e}", exc_info=True)
+            logger.error(f"Error uploading file: {e}", exc_info=True)
             return None
         
     async def download_file(self, object_key: str, file_path: str):
