@@ -4,6 +4,7 @@ from typing import Optional
 import os
 import logging
 import re
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,7 +30,7 @@ class YoutubeDownloader:
         self.use_tor = use_tor
 
     # --------------------------------------------------------
-    # Base yt-dlp command
+    # Base yt-dlp command (Tor optimized, no control port)
     # --------------------------------------------------------
 
     def _build_base_command(self, is_facebook=False):
@@ -40,15 +41,22 @@ class YoutubeDownloader:
             "--newline",
             "--progress",
 
-            # stability
-            "--retries", "10",
-            "--fragment-retries", "10",
+            # high resilience
+            "--retries", "50",
+            "--fragment-retries", "50",
+            "--socket-timeout", "30",
 
-            # youtube challenge solver
+            # Tor-friendly tuning
+            "--concurrent-fragments", "1",
+            "--limit-rate", "600K",
+            "--force-ipv4",
+
+            # resume support
+            "--continue",
+            "--part",
+
+            # challenge solver
             "--remote-components", "ejs:github",
-
-            # force web client (not android)
-            "--extractor-args", "youtube:player_client=web,web_safari"
         ]
 
         # cookies
@@ -67,161 +75,11 @@ class YoutubeDownloader:
                 "https://www.facebook.com/"
             ])
 
+        # Tor proxy
         if self.use_tor:
             cmd.extend(["--proxy", "socks5://127.0.0.1:9050"])
 
         return cmd
-
-    # --------------------------------------------------------
-    # Normalize Google Drive URLs
-    # --------------------------------------------------------
-
-    def _normalize_drive_url(self, url: str) -> str:
-
-        match = re.search(r"/file/d/([^/]+)/", url)
-
-        if match:
-            file_id = match.group(1)
-            return f"https://drive.google.com/uc?id={file_id}"
-
-        return url
-
-    # --------------------------------------------------------
-    # Format listing
-    # --------------------------------------------------------
-
-    async def list_formats(self, url: str):
-
-        try:
-
-            is_facebook = "facebook.com" in url
-            is_drive = "drive.google.com" in url
-
-            if is_drive:
-                url = self._normalize_drive_url(url)
-
-            cmd = self._build_base_command(is_facebook=is_facebook)
-
-            cmd.extend(["-F", url])
-
-            logger.info(f"FORMAT LIST COMMAND:\n{' '.join(cmd)}")
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120
-            )
-
-            logger.info("yt-dlp output:")
-            logger.info(result.stdout)
-
-            if result.stderr:
-                logger.warning(result.stderr)
-
-            if result.returncode == 0:
-                return result.stdout
-
-            return None
-
-        except Exception as e:
-            logger.exception(f"Format listing error: {e}")
-            return None
-
-    # --------------------------------------------------------
-    # Google Drive
-    # --------------------------------------------------------
-
-    async def _download_google_drive(self, url: str, filename: str):
-
-        try:
-
-            url = self._normalize_drive_url(url)
-
-            output_pattern = f"{filename}.%(ext)s"
-
-            cmd = self._build_base_command()
-
-            cmd.extend([
-                "-f", "best",
-                "--merge-output-format", "mp4",
-                "-o", output_pattern,
-                url
-            ])
-
-            logger.info(f"RUNNING CMD:\n{' '.join(cmd)}")
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=1200
-            )
-
-            logger.info(result.stdout)
-
-            if result.stderr:
-                logger.warning(result.stderr)
-
-            output_text = result.stdout + result.stderr
-
-            actual_output = self._find_output_file(filename, output_text)
-
-            if actual_output and Path(actual_output).exists():
-                logger.info(f"Drive download success: {actual_output}")
-                return str(Path(actual_output).absolute())
-
-            return None
-
-        except Exception as e:
-            logger.exception(f"Google Drive error: {e}")
-            return None
-
-    # --------------------------------------------------------
-    # Facebook
-    # --------------------------------------------------------
-
-    async def _download_facebook(self, url: str, filename: str):
-
-        try:
-
-            output_pattern = f"{filename}.%(ext)s"
-
-            cmd = self._build_base_command(is_facebook=True)
-
-            cmd.extend([
-                "-f", "best",
-                "--merge-output-format", "mp4",
-                "-o", output_pattern,
-                url
-            ])
-
-            logger.info(f"RUNNING CMD:\n{' '.join(cmd)}")
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=1200
-            )
-
-            logger.info(result.stdout)
-
-            if result.stderr:
-                logger.warning(result.stderr)
-
-            output_text = result.stdout + result.stderr
-
-            actual_output = self._find_output_file(filename, output_text)
-
-            if actual_output and Path(actual_output).exists():
-                return str(Path(actual_output).absolute())
-
-            return None
-
-        except Exception as e:
-            logger.exception(f"Facebook download error: {e}")
-            return None
 
     # --------------------------------------------------------
     # Main download
@@ -230,13 +88,6 @@ class YoutubeDownloader:
     async def download(self, url: str, filename: str):
 
         try:
-
-            if "facebook.com" in url:
-                return await self._download_facebook(url, filename)
-
-            if "drive.google.com" in url:
-                return await self._download_google_drive(url, filename)
-
             logger.info(f"[YOUTUBE] Downloading: {url}")
 
             output_pattern = f"{filename}.%(ext)s"
@@ -249,46 +100,53 @@ class YoutubeDownloader:
 
             for quality in qualities_to_try:
 
-                cmd = self._build_base_command()
+                # retry attempts per quality (simulate circuit refresh)
+                for attempt in range(3):
 
-                if quality:
-                    format_spec = f"bv*[height<={quality}]+ba/b[height<={quality}]"
-                else:
-                    format_spec = "bv*+ba/b"
+                    cmd = self._build_base_command()
 
-                cmd.extend([
-                    "-f", format_spec,
-                    "--merge-output-format", "mp4",
-                    "-o", output_pattern,
-                    url
-                ])
+                    if quality:
+                        format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
+                    else:
+                        format_spec = "bv*[tbr<2500]+ba/b"
 
-                logger.info(f"RUNNING CMD:\n{' '.join(cmd)}")
+                    cmd.extend([
+                        "-f", format_spec,
+                        "--merge-output-format", "mp4",
+                        "-o", output_pattern,
+                        url
+                    ])
 
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=1800
-                )
+                    logger.info(f"RUNNING CMD (attempt {attempt+1}):\n{' '.join(cmd)}")
 
-                logger.info(result.stdout)
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=7200  # allow long Tor downloads
+                    )
 
-                if result.stderr:
-                    logger.warning(result.stderr)
+                    logger.info(result.stdout)
 
-                output_text = result.stdout + result.stderr
+                    if result.stderr:
+                        logger.warning(result.stderr)
 
-                actual_output = self._find_output_file(filename, output_text)
+                    output_text = result.stdout + result.stderr
 
-                if actual_output and Path(actual_output).exists():
-                    logger.info(f"Download success: {actual_output}")
-                    return str(Path(actual_output).absolute())
+                    actual_output = self._find_output_file(filename, output_text)
+
+                    if actual_output and Path(actual_output).exists():
+                        logger.info(f"Download success: {actual_output}")
+                        return str(Path(actual_output).absolute())
+
+                    logger.warning(f"Attempt {attempt+1} failed, retrying...")
+
+                    # wait before retry (Tor may switch circuit)
+                    time.sleep(10)
 
                 logger.warning(f"Download failed for quality {quality}")
 
             logger.error("All download attempts failed")
-
             return None
 
         except Exception as e:
@@ -302,7 +160,6 @@ class YoutubeDownloader:
     def _find_output_file(self, base_filename: str, ytdlp_output: str):
 
         try:
-
             merge_match = re.search(
                 r'Merging formats into "([^"]+\.(?:mp4|webm|mkv))"',
                 ytdlp_output
@@ -320,9 +177,7 @@ class YoutubeDownloader:
                 return dest_matches[-1]
 
             for ext in [".mp4", ".webm", ".mkv"]:
-
                 candidate = f"{base_filename}{ext}"
-
                 if Path(candidate).exists():
                     return candidate
 
