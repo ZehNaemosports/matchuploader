@@ -30,9 +30,8 @@ class YoutubeDownloader:
         self.use_tor = use_tor
 
     # --------------------------------------------------------
-    # Base yt-dlp command (Tor optimized, no control port)
+    # Base yt-dlp command (Tor-aware)
     # --------------------------------------------------------
-
     def _build_base_command(self, is_facebook=False):
 
         cmd = [
@@ -46,11 +45,6 @@ class YoutubeDownloader:
             "--fragment-retries", "50",
             "--socket-timeout", "30",
 
-            # Tor-friendly tuning
-            "--concurrent-fragments", "1",
-            "--limit-rate", "600K",
-            "--force-ipv4",
-
             # resume support
             "--continue",
             "--part",
@@ -62,7 +56,6 @@ class YoutubeDownloader:
         # cookies
         if is_facebook and self.facebook_cookies_path and os.path.exists(self.facebook_cookies_path):
             cmd.extend(["--cookies", self.facebook_cookies_path])
-
         elif self.cookies_path and os.path.exists(self.cookies_path):
             cmd.extend(["--cookies", self.cookies_path])
 
@@ -77,14 +70,23 @@ class YoutubeDownloader:
 
         # Tor proxy
         if self.use_tor:
-            cmd.extend(["--proxy", "socks5://127.0.0.1:9050"])
+            cmd.extend([
+                "--proxy", "socks5://127.0.0.1:9050",
+                "--concurrent-fragments", "1",
+                "--limit-rate", "600K",
+                "--force-ipv4",
+            ])
+        else:
+            # non-Tor: faster
+            cmd.extend([
+                "--concurrent-fragments", "5"
+            ])
 
         return cmd
 
     # --------------------------------------------------------
     # Main download
     # --------------------------------------------------------
-
     async def download(self, url: str, filename: str):
 
         try:
@@ -100,7 +102,7 @@ class YoutubeDownloader:
 
             for quality in qualities_to_try:
 
-                # retry attempts per quality (simulate circuit refresh)
+                # retry attempts per quality
                 for attempt in range(3):
 
                     cmd = self._build_base_command()
@@ -123,7 +125,7 @@ class YoutubeDownloader:
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=7200  # allow long Tor downloads
+                        timeout=7200 if self.use_tor else 1800  # long timeout for Tor
                     )
 
                     logger.info(result.stdout)
@@ -132,7 +134,6 @@ class YoutubeDownloader:
                         logger.warning(result.stderr)
 
                     output_text = result.stdout + result.stderr
-
                     actual_output = self._find_output_file(filename, output_text)
 
                     if actual_output and Path(actual_output).exists():
@@ -140,9 +141,7 @@ class YoutubeDownloader:
                         return str(Path(actual_output).absolute())
 
                     logger.warning(f"Attempt {attempt+1} failed, retrying...")
-
-                    # wait before retry (Tor may switch circuit)
-                    time.sleep(10)
+                    time.sleep(10 if self.use_tor else 3)
 
                 logger.warning(f"Download failed for quality {quality}")
 
@@ -156,7 +155,6 @@ class YoutubeDownloader:
     # --------------------------------------------------------
     # Detect output file
     # --------------------------------------------------------
-
     def _find_output_file(self, base_filename: str, ytdlp_output: str):
 
         try:
@@ -164,7 +162,6 @@ class YoutubeDownloader:
                 r'Merging formats into "([^"]+\.(?:mp4|webm|mkv))"',
                 ytdlp_output
             )
-
             if merge_match:
                 return merge_match.group(1)
 
@@ -172,7 +169,6 @@ class YoutubeDownloader:
                 r"Destination:\s+([^\s]+\.(?:mp4|webm|mkv))",
                 ytdlp_output
             )
-
             if dest_matches:
                 return dest_matches[-1]
 
