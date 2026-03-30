@@ -100,38 +100,35 @@ class YoutubeDownloader:
                 None
             ]
 
-            for quality in qualities_to_try:
+            for idx, quality in enumerate(qualities_to_try):
 
-                # retry attempts per quality
-                for attempt in range(3):
+                cmd = self._build_base_command()
 
-                    cmd = self._build_base_command()
+                if quality:
+                    format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
+                else:
+                    format_spec = "bv*[tbr<2500]+ba/b"
 
-                    if quality:
-                        format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
-                    else:
-                        format_spec = "bv*[tbr<2500]+ba/b"
+                cmd.extend([
+                    "-f", format_spec,
+                    "--merge-output-format", "mp4",
+                    "-o", output_pattern,
+                    url
+                ])
 
-                    cmd.extend([
-                        "-f", format_spec,
-                        "--merge-output-format", "mp4",
-                        "-o", output_pattern,
-                        url
-                    ])
+                logger.info(f"RUNNING CMD (quality attempt {idx + 1}):\n{' '.join(cmd)}")
 
-                    logger.info(f"RUNNING CMD (attempt {attempt+1}):\n{' '.join(cmd)}")
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=7200 if self.use_tor else 1800
+                )
 
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=7200 if self.use_tor else 1800  # long timeout for Tor
-                    )
+                logger.info(result.stdout)
 
-                    logger.info(result.stdout)
-
-                    if result.stderr:
-                        logger.warning(result.stderr)
+                if result.stderr:
+                    logger.warning(result.stderr)
 
                     output_text = result.stdout + result.stderr
                     actual_output = self._find_output_file(filename, output_text)
@@ -140,10 +137,7 @@ class YoutubeDownloader:
                         logger.info(f"Download success: {actual_output}")
                         return str(Path(actual_output).absolute())
 
-                    logger.warning(f"Attempt {attempt+1} failed, retrying...")
-                    time.sleep(10 if self.use_tor else 3)
-
-                logger.warning(f"Download failed for quality {quality}")
+                logger.warning(f"Download failed for quality {quality}, trying next...")
 
             logger.error("All download attempts failed")
             return None
