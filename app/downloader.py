@@ -21,7 +21,7 @@ class YoutubeDownloader:
         preferred_quality: str = "1080",
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
-        use_tor: bool = True
+        use_tor: bool = False
     ):
         self.preferred_quality = preferred_quality
         self.fallback_quality = "720"
@@ -73,7 +73,7 @@ class YoutubeDownloader:
             cmd.extend([
                 "--proxy", "socks5://127.0.0.1:9050",
                 "--concurrent-fragments", "1",
-                "--limit-rate", "600K",
+                "--limit-rate", "1M",
                 "--force-ipv4",
             ])
         else:
