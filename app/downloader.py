@@ -4,7 +4,6 @@ from typing import Optional
 import os
 import logging
 import re
-import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,18 +20,30 @@ class YoutubeDownloader:
         preferred_quality: str = "1080",
         cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
-        use_tor: bool = True
     ):
         self.preferred_quality = preferred_quality
         self.fallback_quality = "720"
         self.cookies_path = cookies_path
         self.facebook_cookies_path = facebook_cookies_path
-        self.use_tor = use_tor
 
     # --------------------------------------------------------
-    # Base yt-dlp command (Tor-aware)
+    # Platform detection
     # --------------------------------------------------------
-    def _build_base_command(self, is_facebook=False):
+
+    def _is_youtube(self, url: str) -> bool:
+        return "youtube.com" in url or "youtu.be" in url
+
+    def _is_veo(self, url: str) -> bool:
+        return "veo.co" in url
+
+    def _is_facebook(self, url: str) -> bool:
+        return "facebook.com" in url
+
+    # --------------------------------------------------------
+    # Base yt-dlp command (Tor-aware per request)
+    # --------------------------------------------------------
+
+    def _build_base_command(self, use_tor=False, is_facebook=False):
 
         cmd = [
             "yt-dlp",
@@ -40,16 +51,13 @@ class YoutubeDownloader:
             "--newline",
             "--progress",
 
-            # high resilience
             "--retries", "50",
             "--fragment-retries", "50",
             "--socket-timeout", "30",
 
-            # resume support
             "--continue",
             "--part",
 
-            # challenge solver
             "--remote-components", "ejs:github",
         ]
 
@@ -62,14 +70,12 @@ class YoutubeDownloader:
         # facebook headers
         if is_facebook:
             cmd.extend([
-                "--user-agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                "--referer",
-                "https://www.facebook.com/"
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "--referer", "https://www.facebook.com/"
             ])
 
-        # Tor proxy
-        if self.use_tor:
+        # Tor ONLY for YouTube
+        if use_tor:
             cmd.extend([
                 "--proxy", "socks5://127.0.0.1:9050",
                 "--concurrent-fragments", "1",
@@ -77,7 +83,6 @@ class YoutubeDownloader:
                 "--force-ipv4",
             ])
         else:
-            # non-Tor: faster
             cmd.extend([
                 "--concurrent-fragments", "5"
             ])
@@ -87,10 +92,24 @@ class YoutubeDownloader:
     # --------------------------------------------------------
     # Main download
     # --------------------------------------------------------
+
     async def download(self, url: str, filename: str):
 
         try:
-            logger.info(f"[YOUTUBE] Downloading: {url}")
+            # Detect platform
+            is_youtube = self._is_youtube(url)
+            is_veo = self._is_veo(url)
+            is_facebook = self._is_facebook(url)
+
+            # Logging (clean and explicit)
+            if is_youtube:
+                logger.info(f"[YOUTUBE] Downloading: {url} (via Tor)")
+            elif is_veo:
+                logger.info(f"[VEO] Downloading: {url} (direct, no Tor)")
+            elif is_facebook:
+                logger.info(f"[FACEBOOK] Downloading: {url}")
+            else:
+                logger.info(f"[UNKNOWN SOURCE] Downloading: {url}")
 
             output_pattern = f"{filename}.%(ext)s"
 
@@ -102,7 +121,12 @@ class YoutubeDownloader:
 
             for idx, quality in enumerate(qualities_to_try):
 
-                cmd = self._build_base_command()
+                use_tor = is_youtube  # 🔥 only YouTube uses Tor
+
+                cmd = self._build_base_command(
+                    use_tor=use_tor,
+                    is_facebook=is_facebook
+                )
 
                 if quality:
                     format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
@@ -122,7 +146,7 @@ class YoutubeDownloader:
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=7200 if self.use_tor else 1800
+                    timeout=7200 if use_tor else 1800
                 )
 
                 logger.info(result.stdout)
@@ -149,6 +173,7 @@ class YoutubeDownloader:
     # --------------------------------------------------------
     # Detect output file
     # --------------------------------------------------------
+
     def _find_output_file(self, base_filename: str, ytdlp_output: str):
 
         try:
