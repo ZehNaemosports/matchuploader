@@ -101,7 +101,7 @@ class YoutubeDownloader:
             is_veo = self._is_veo(url)
             is_facebook = self._is_facebook(url)
 
-            # Logging (clean and explicit)
+            # Logging
             if is_youtube:
                 logger.info(f"[YOUTUBE] Downloading: {url} (via Tor)")
             elif is_veo:
@@ -121,17 +121,21 @@ class YoutubeDownloader:
 
             for idx, quality in enumerate(qualities_to_try):
 
-                use_tor = is_youtube  # 🔥 only YouTube uses Tor
+                use_tor = is_youtube
 
                 cmd = self._build_base_command(
                     use_tor=use_tor,
                     is_facebook=is_facebook
                 )
 
-                if quality:
-                    format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
+                if is_veo:
+                    # Veo handles formats internally better
+                    format_spec = "best"
                 else:
-                    format_spec = "bv*[tbr<2500]+ba/b"
+                    if quality:
+                        format_spec = f"bv*[height<={quality}][tbr<2500]+ba/b[height<={quality}]"
+                    else:
+                        format_spec = "bv*[tbr<2500]+ba/b"
 
                 cmd.extend([
                     "-f", format_spec,
@@ -154,12 +158,15 @@ class YoutubeDownloader:
                 if result.stderr:
                     logger.warning(result.stderr)
 
-                    output_text = result.stdout + result.stderr
-                    actual_output = self._find_output_file(filename, output_text)
+                output_text = result.stdout + result.stderr
+                actual_output = self._find_output_file(filename, output_text)
 
-                    if actual_output and Path(actual_output).exists():
-                        logger.info(f"Download success: {actual_output}")
-                        return str(Path(actual_output).absolute())
+                direct_file = f"{filename}.mp4"
+
+                if (actual_output and Path(actual_output).exists()) or Path(direct_file).exists():
+                    final_path = actual_output if actual_output else direct_file
+                    logger.info(f"Download success: {final_path}")
+                    return str(Path(final_path).absolute())
 
                 logger.warning(f"Download failed for quality {quality}, trying next...")
 
