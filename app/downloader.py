@@ -4,6 +4,7 @@ from typing import Optional
 import os
 import logging
 import re
+import requests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,8 +40,36 @@ class YoutubeDownloader:
     def _is_facebook(self, url: str) -> bool:
         return "facebook.com" in url
 
+    def _is_pixellot(self, url: str) -> bool:
+        return "pixellot" in url
+
     # --------------------------------------------------------
-    # Base yt-dlp command (Tor-aware per request)
+    # Pixellot extraction
+    # --------------------------------------------------------
+
+    def _extract_pixellot_m3u8(self, url: str) -> Optional[str]:
+        """
+        Extract m3u8 stream from Pixellot page
+        """
+        try:
+            logger.info("[PIXELLOT] Resolving stream...")
+
+            response = requests.get(url, timeout=10)
+            matches = re.findall(r"https://[^\s\"']+\.m3u8", response.text)
+
+            if matches:
+                logger.info(f"[PIXELLOT] Found stream: {matches[0]}")
+                return matches[0]
+
+            logger.error("[PIXELLOT] No m3u8 found in page")
+            return None
+
+        except Exception as e:
+            logger.exception(f"[PIXELLOT] Extraction error: {e}")
+            return None
+
+    # --------------------------------------------------------
+    # Base yt-dlp command
     # --------------------------------------------------------
 
     def _build_base_command(self, use_tor=False, is_facebook=False):
@@ -100,24 +129,40 @@ class YoutubeDownloader:
             is_youtube = self._is_youtube(url)
             is_veo = self._is_veo(url)
             is_facebook = self._is_facebook(url)
+            is_pixellot = self._is_pixellot(url)
 
             # Logging
             if is_youtube:
                 logger.info(f"[YOUTUBE] Downloading: {url} (via Tor)")
             elif is_veo:
-                logger.info(f"[VEO] Downloading: {url} (direct, no Tor)")
+                logger.info(f"[VEO] Downloading: {url} (direct)")
+            elif is_pixellot:
+                logger.info(f"[PIXELLOT] Downloading: {url}")
             elif is_facebook:
                 logger.info(f"[FACEBOOK] Downloading: {url}")
             else:
                 logger.info(f"[UNKNOWN SOURCE] Downloading: {url}")
 
+            # --------------------------------------------------------
+            # Pixellot handling (convert to m3u8 first)
+            # --------------------------------------------------------
+            if is_pixellot:
+                stream_url = self._extract_pixellot_m3u8(url)
+                if not stream_url:
+                    return None
+                url = stream_url
+
             output_pattern = f"{filename}.%(ext)s"
 
-            qualities_to_try = [
-                self.preferred_quality,
-                self.fallback_quality,
-                None
-            ]
+            # Pixellot & Veo → single attempt (best)
+            if is_veo or is_pixellot:
+                qualities_to_try = [None]
+            else:
+                qualities_to_try = [
+                    self.preferred_quality,
+                    self.fallback_quality,
+                    None
+                ]
 
             for idx, quality in enumerate(qualities_to_try):
 
@@ -128,8 +173,8 @@ class YoutubeDownloader:
                     is_facebook=is_facebook
                 )
 
-                if is_veo:
-                    # Veo handles formats internally better
+                # format selection
+                if is_veo or is_pixellot:
                     format_spec = "best"
                 else:
                     if quality:
@@ -144,7 +189,7 @@ class YoutubeDownloader:
                     url
                 ])
 
-                logger.info(f"RUNNING CMD (quality attempt {idx + 1}):\n{' '.join(cmd)}")
+                logger.info(f"RUNNING CMD (attempt {idx + 1}):\n{' '.join(cmd)}")
 
                 result = subprocess.run(
                     cmd,
@@ -158,6 +203,9 @@ class YoutubeDownloader:
                 if result.stderr:
                     logger.warning(result.stderr)
 
+                # --------------------------------------------------------
+                # FIX: Always check for file regardless of stderr
+                # --------------------------------------------------------
                 output_text = result.stdout + result.stderr
                 actual_output = self._find_output_file(filename, output_text)
 
