@@ -49,25 +49,38 @@ class YoutubeDownloader:
 
     def _extract_pixellot_m3u8(self, url: str) -> Optional[str]:
         """
-        Extract m3u8 stream from Pixellot page
+        Robust Pixellot extractor:
+        - follows redirects
+        - extracts m3u8 from final HTML
         """
+
         try:
             logger.info("[PIXELLOT] Resolving stream...")
 
-            response = requests.get(url, timeout=10)
+            session = requests.Session()
+
+            # Step 1: follow redirect (IMPORTANT)
+            response = session.get(url, timeout=10, allow_redirects=True)
+            final_url = response.url
+
+            logger.info(f"[PIXELLOT] Final URL: {final_url}")
+
+            # Step 2: fetch final page again (clean)
+            response = session.get(final_url, timeout=10)
+
+            # Step 3: extract m3u8
             matches = re.findall(r"https://[^\s\"']+\.m3u8", response.text)
 
             if matches:
                 logger.info(f"[PIXELLOT] Found stream: {matches[0]}")
                 return matches[0]
 
-            logger.error("[PIXELLOT] No m3u8 found in page")
+            logger.error("[PIXELLOT] No m3u8 found in final page")
             return None
 
         except Exception as e:
             logger.exception(f"[PIXELLOT] Extraction error: {e}")
             return None
-
     # --------------------------------------------------------
     # Base yt-dlp command
     # --------------------------------------------------------
