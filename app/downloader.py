@@ -167,7 +167,7 @@ class YoutubeDownloader:
 
             output_pattern = f"{filename}.%(ext)s"
 
-            # Pixellot & Veo → single attempt (best)
+            # Pixellot & Veo → single attempt
             if is_veo or is_pixellot:
                 qualities_to_try = [None]
             else:
@@ -187,7 +187,10 @@ class YoutubeDownloader:
                 )
 
                 # format selection
-                if is_veo or is_pixellot:
+                if is_veo:
+                    # Target 1080p standard broadcast and avoid panoramic
+                    format_spec = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+                elif is_pixellot:
                     format_spec = "best"
                 else:
                     if quality:
