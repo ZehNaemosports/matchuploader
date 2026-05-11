@@ -121,7 +121,7 @@ class YoutubeDownloader:
             cmd.extend([
                 "--proxy", "socks5://127.0.0.1:9050",
                 "--concurrent-fragments", "1",
-                "--limit-rate", "1M",
+                "--limit-rate", "9M",
                 "--force-ipv4",
             ])
         else:
