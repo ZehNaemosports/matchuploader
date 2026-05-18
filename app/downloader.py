@@ -343,7 +343,7 @@ class YoutubeDownloader:
                 "1",
 
                 "--limit-rate",
-                "3M",
+                "8M",
 
                 "--force-ipv4",
             ])
