@@ -459,7 +459,7 @@ class YoutubeDownloader:
                 qualities_to_try
             ):
 
-                use_tor = False
+                use_tor = True if is_youtube else False
 
                 # only fallback to Tor later if needed
                 if (
