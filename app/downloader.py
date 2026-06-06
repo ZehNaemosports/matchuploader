@@ -467,7 +467,7 @@ class YoutubeDownloader:
                     is_youtube
                     and idx > 0
                 ):
-                    use_tor = True
+                    use_tor = False
 
                 cmd = self._build_base_command(
                     use_tor=use_tor,
