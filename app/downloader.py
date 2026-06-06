@@ -460,6 +460,7 @@ class YoutubeDownloader:
             ):
 
                 # use_tor = True if is_youtube else False
+                use_tor=False
 
                 # only fallback to Tor later if needed
                 if (
