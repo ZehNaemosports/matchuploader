@@ -340,7 +340,7 @@ class YoutubeDownloader:
                 "socks5://127.0.0.1:9050",
 
                 "--concurrent-fragments",
-                "5",
+                "10",
 
                 "--limit-rate",
                 "8M",
