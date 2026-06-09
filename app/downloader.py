@@ -19,7 +19,7 @@ class YoutubeDownloader:
     def __init__(
         self,
         preferred_quality: str = "1080",
-        cookies_path: Optional[str] = "/home/ubuntu/cookies.txt",
+        cookies_path: Optional[str] = "/home/ubuntu/cookies_us.txt",
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
     ):
         self.preferred_quality = preferred_quality
