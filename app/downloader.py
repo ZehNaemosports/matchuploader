@@ -459,8 +459,8 @@ class YoutubeDownloader:
                 qualities_to_try
             ):
 
-                use_tor = True if is_youtube else False
-                # use_tor=False
+                # use_tor = True if is_youtube else False
+                use_tor=False
 
                 # only fallback to Tor later if needed
                 if (
@@ -470,7 +470,7 @@ class YoutubeDownloader:
                     use_tor = True
 
                 cmd = self._build_base_command(
-                    use_tor=use_tor,
+                    use_tor=False,
                     is_facebook=is_facebook
                 )
 
