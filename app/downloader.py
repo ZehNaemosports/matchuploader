@@ -270,28 +270,20 @@ class YoutubeDownloader:
 
         cmd = [
             "yt-dlp",
-
             "--no-playlist",
-
             "--newline",
             "--progress",
-
             "--retries", "20",
             "--fragment-retries", "20",
             "--extractor-retries", "5",
-
             "--socket-timeout", "30",
-
             "--continue",
             "--part",
-
             "--abort-on-unavailable-fragments",
-
             "--no-write-thumbnail",
-
             "--merge-output-format", "mp4",
-
-            "--remote-components", "ejs:github",
+            "--extractor-args", "youtube:player_client=web",  # <-- ADD THIS
+            # "--remote-components", "ejs:github",             # <-- REMOVE THIS
         ]
 
         # cookies
