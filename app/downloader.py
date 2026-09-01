@@ -283,7 +283,7 @@ class YoutubeDownloader:
             "--no-write-thumbnail",
             "--merge-output-format", "mp4",
             "--extractor-args", "youtube:player_client=web",  # <-- ADD THIS
-            "--remote-components", "ejs:github",             # <-- REMOVE THIS
+            # "--remote-components", "ejs:github",             # <-- REMOVE THIS
         ]
 
         # cookies
