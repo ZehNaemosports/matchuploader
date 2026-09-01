@@ -282,7 +282,8 @@ class YoutubeDownloader:
             "--abort-on-unavailable-fragments",
             "--no-write-thumbnail",
             "--merge-output-format", "mp4",
-            "--extractor-args", "youtube:player_client=web"
+            "--extractor-args", "youtube:player_client=web",
+            "--js-runtimes", "node",
         ]
 
         # cookies
