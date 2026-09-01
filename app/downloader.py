@@ -451,18 +451,14 @@ class YoutubeDownloader:
                 qualities_to_try
             ):
 
-                # use_tor = True if is_youtube else False
-                use_tor=False
+                # Use Tor for YouTube by default (first attempt)
+                use_tor = True if is_youtube else False
 
-                # only fallback to Tor later if needed
-                if (
-                    is_youtube
-                    and idx > 0
-                ):
-                    use_tor = True
+                # (Optional) If you want to try without Tor first, uncomment the line below:
+                # use_tor = is_youtube and idx > 0   # try without Tor on first attempt, then with Tor
 
                 cmd = self._build_base_command(
-                    use_tor=False,
+                    use_tor=use_tor,          # <-- now correctly passed
                     is_facebook=is_facebook
                 )
 
