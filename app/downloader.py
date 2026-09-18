@@ -50,8 +50,7 @@ class YoutubeDownloader:
 
         url = url.strip()
 
-        # Markdown link:
-        # [label](url)
+        # Markdown link: [label](url)
         match = re.match(
             r"\[([^\]]+)\]\((https?://[^)]+)\)",
             url
@@ -79,13 +78,58 @@ class YoutubeDownloader:
         return "pixellot" in url
 
     # --------------------------------------------------------
+    # Format selection helpers
+    # --------------------------------------------------------
+
+    def _build_format_spec(self, quality: Optional[str]) -> str:
+        """
+        Build a yt-dlp format spec that prefers H.264 (avc1) + AAC (mp4a)
+        at the requested quality, with graceful fallbacks.
+
+        Forcing H.264+AAC at download time means clips can be stream-copied
+        later with no re-encoding — Safari/iOS compatible out of the box.
+
+        Fallback chain:
+          1. H.264 video + AAC audio at quality cap           ← ideal
+          2. H.264 video + any audio at quality cap           ← transcode audio only
+          3. Single-file H.264 at quality cap                 ← rare
+          4. Any codec at quality cap                         ← last quality-gated resort
+          5. Absolute best available                          ← no quality gate
+        """
+        if quality:
+            return (
+                f"bestvideo[height<={quality}][vcodec^=avc1]"
+                f"+bestaudio[acodec^=mp4a]/"
+                f"bestvideo[height<={quality}][vcodec^=avc1]"
+                f"+bestaudio/"
+                f"best[height<={quality}][vcodec^=avc1]/"
+                f"best[height<={quality}]/"
+                f"best"
+            )
+        else:
+            return (
+                "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+                "bestvideo[vcodec^=avc1]+bestaudio/"
+                "best[vcodec^=avc1]/"
+                "best"
+            )
+
+    def _build_veo_format_spec(self) -> str:
+        """Veo serves MP4/M4A natively — prefer that directly."""
+        return (
+            "bestvideo[height<=1080][ext=mp4][vcodec^=avc1]"
+            "+bestaudio[ext=m4a]/"
+            "bestvideo[height<=1080][ext=mp4]"
+            "+bestaudio[ext=m4a]/"
+            "best[height<=1080][ext=mp4]/"
+            "best"
+        )
+
+    # --------------------------------------------------------
     # Pixellot extraction
     # --------------------------------------------------------
 
-    def _extract_pixellot_m3u8(
-        self,
-        url: str
-    ) -> Optional[str]:
+    def _extract_pixellot_m3u8(self, url: str) -> Optional[str]:
 
         try:
 
@@ -114,9 +158,7 @@ class YoutubeDownloader:
 
             final_url = response.url
 
-            logger.info(
-                f"[PIXELLOT] Final URL: {final_url}"
-            )
+            logger.info(f"[PIXELLOT] Final URL: {final_url}")
 
             # Fetch final page
             response = session.get(
@@ -146,23 +188,17 @@ class YoutubeDownloader:
                     )
                 )
 
-                logger.info(
-                    f"[PIXELLOT] Found stream: {matches[0]}"
-                )
+                logger.info(f"[PIXELLOT] Found stream: {matches[0]}")
 
                 return matches[0]
 
-            logger.warning(
-                "[PIXELLOT] No direct m3u8 found"
-            )
+            logger.warning("[PIXELLOT] No direct m3u8 found")
 
             return None
 
         except Exception as e:
 
-            logger.exception(
-                f"[PIXELLOT] Extraction error: {e}"
-            )
+            logger.exception(f"[PIXELLOT] Extraction error: {e}")
 
             return None
 
@@ -170,10 +206,7 @@ class YoutubeDownloader:
     # Video validation
     # --------------------------------------------------------
 
-    def _is_valid_video_file(
-        self,
-        path: str
-    ) -> bool:
+    def _is_valid_video_file(self, path: str) -> bool:
 
         try:
 
@@ -186,112 +219,64 @@ class YoutubeDownloader:
                 return False
 
             # Reject image files
-            invalid_exts = [
-                ".webp",
-                ".jpg",
-                ".jpeg",
-                ".png"
-            ]
+            invalid_exts = [".webp", ".jpg", ".jpeg", ".png"]
 
             if file_path.suffix.lower() in invalid_exts:
-
-                logger.warning(
-                    f"Rejected non-video file: {path}"
-                )
-
+                logger.warning(f"Rejected non-video file: {path}")
                 return False
 
             # Reject tiny files
-            size_mb = (
-                file_path.stat().st_size /
-                (1024 * 1024)
-            )
+            size_mb = file_path.stat().st_size / (1024 * 1024)
 
             if size_mb < 2:
-
-                logger.warning(
-                    f"Rejected tiny file "
-                    f"({size_mb:.2f} MB): {path}"
-                )
-
+                logger.warning(f"Rejected tiny file ({size_mb:.2f} MB): {path}")
                 return False
 
             # Verify actual video stream
             probe = subprocess.run(
                 [
                     "ffprobe",
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream=codec_type",
-                    "-of",
-                    "csv=p=0",
+                    "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_type",
+                    "-of", "csv=p=0",
                     path
                 ],
                 capture_output=True,
                 text=True
             )
 
-            has_video = (
-                "video" in probe.stdout.lower()
-            )
+            has_video = "video" in probe.stdout.lower()
 
             if not has_video:
-
-                logger.warning(
-                    f"No video stream found: {path}"
-                )
+                logger.warning(f"No video stream found: {path}")
 
             return has_video
 
         except Exception as e:
-
-            logger.warning(
-                f"Video validation failed: {e}"
-            )
-
+            logger.warning(f"Video validation failed: {e}")
             return False
 
     # --------------------------------------------------------
     # Cleanup partial/corrupted files
     # --------------------------------------------------------
 
-    def _cleanup_partial_files(
-        self,
-        filename: str
-    ):
+    def _cleanup_partial_files(self, filename: str):
 
         try:
 
-            patterns = [
-                f"{filename}*"
-            ]
+            for file in Path(".").glob(f"{filename}*"):
 
-            for pattern in patterns:
+                if (
+                    file.suffix in [".part", ".ytdl", ".webp"]
+                    or ".f" in file.name
+                ):
 
-                for file in Path(".").glob(pattern):
-
-                    if (
-                        file.suffix in [
-                            ".part",
-                            ".ytdl",
-                            ".webp"
-                        ]
-                        or ".f" in file.name
-                    ):
-
-                        try:
-
-                            logger.warning(
-                                f"Removing partial file: {file}"
-                            )
-
-                            file.unlink()
-
-                        except Exception:
-                            pass
+                    try:
+                        logger.warning(f"Removing partial file: {file}")
+                        file.unlink()
+                    except Exception:
+                        pass
 
         except Exception:
             pass
@@ -300,11 +285,7 @@ class YoutubeDownloader:
     # Base yt-dlp command
     # --------------------------------------------------------
 
-    def _build_base_command(
-        self,
-        use_tor=False,
-        is_facebook=False
-    ):
+    def _build_base_command(self, use_tor=False, is_facebook=False):
 
         cmd = [
             "yt-dlp",
@@ -339,68 +320,41 @@ class YoutubeDownloader:
         if (
             is_facebook
             and self.facebook_cookies_path
-            and os.path.exists(
-                self.facebook_cookies_path
-            )
+            and os.path.exists(self.facebook_cookies_path)
         ):
-
-            cmd.extend([
-                "--cookies",
-                self.facebook_cookies_path
-            ])
+            cmd.extend(["--cookies", self.facebook_cookies_path])
 
         elif (
             self.cookies_path
-            and os.path.exists(
-                self.cookies_path
-            )
+            and os.path.exists(self.cookies_path)
         ):
-
-            cmd.extend([
-                "--cookies",
-                self.cookies_path
-            ])
+            cmd.extend(["--cookies", self.cookies_path])
 
         # ----------------------------------------------------
         # Facebook headers
         # ----------------------------------------------------
 
         if is_facebook:
-
             cmd.extend([
                 "--user-agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-
                 "--referer",
                 "https://www.facebook.com/"
             ])
 
         # ----------------------------------------------------
-        # YouTube via Tor
+        # YouTube via Tor / direct
         # ----------------------------------------------------
 
         if use_tor:
-
             cmd.extend([
-
-                "--proxy",
-                "socks5h://127.0.0.1:9050",
-
-                "--concurrent-fragments",
-                "10",
-
-                "--limit-rate",
-                "8M",
-
+                "--proxy", "socks5h://127.0.0.1:9050",
+                "--concurrent-fragments", "10",
+                "--limit-rate", "8M",
                 "--force-ipv4",
             ])
-
         else:
-
-            cmd.extend([
-                "--concurrent-fragments",
-                "5"
-            ])
+            cmd.extend(["--concurrent-fragments", "5"])
 
         return cmd
 
@@ -408,24 +362,18 @@ class YoutubeDownloader:
     # Main download
     # --------------------------------------------------------
 
-    async def download(
-        self,
-        url: str,
-        filename: str
-    ):
+    async def download(self, url: str, filename: str):
 
         try:
 
             # ------------------------------------------------
-            # Clean URL FIRST
+            # Clean URL first
             # ------------------------------------------------
 
             original_url = url
-
             url = self._clean_url(url)
 
             if original_url != url:
-
                 logger.info(
                     f"[URL] Cleaned URL:\n"
                     f"       Original: {original_url}\n"
@@ -436,10 +384,10 @@ class YoutubeDownloader:
             # Platform detection
             # ------------------------------------------------
 
-            is_youtube = self._is_youtube(url)
-            is_veo = self._is_veo(url)
-            is_facebook = self._is_facebook(url)
-            is_pixellot = self._is_pixellot(url)
+            is_youtube   = self._is_youtube(url)
+            is_veo       = self._is_veo(url)
+            is_facebook  = self._is_facebook(url)
+            is_pixellot  = self._is_pixellot(url)
 
             # ------------------------------------------------
             # Cleanup old partial files
@@ -452,360 +400,191 @@ class YoutubeDownloader:
             # ------------------------------------------------
 
             if is_youtube:
-
-                logger.info(
-                    f"[YOUTUBE] Downloading: {url}"
-                )
-
+                logger.info(f"[YOUTUBE] Downloading: {url}")
             elif is_veo:
-
-                logger.info(
-                    f"[VEO] Downloading: {url}"
-                )
-
+                logger.info(f"[VEO] Downloading: {url}")
             elif is_pixellot:
-
-                logger.info(
-                    f"[PIXELLOT] Downloading: {url}"
-                )
-
+                logger.info(f"[PIXELLOT] Downloading: {url}")
             elif is_facebook:
-
-                logger.info(
-                    f"[FACEBOOK] Downloading: {url}"
-                )
-
+                logger.info(f"[FACEBOOK] Downloading: {url}")
             else:
-
-                logger.info(
-                    f"[UNKNOWN SOURCE] Downloading: {url}"
-                )
+                logger.info(f"[UNKNOWN SOURCE] Downloading: {url}")
 
             # ------------------------------------------------
-            # Pixellot handling
+            # Pixellot: resolve m3u8 before download loop
             # ------------------------------------------------
 
             if is_pixellot:
-
-                stream_url = (
-                    self._extract_pixellot_m3u8(url)
-                )
-
+                stream_url = self._extract_pixellot_m3u8(url)
                 if not stream_url:
-
-                    logger.error(
-                        "[PIXELLOT] Could not resolve stream"
-                    )
-
+                    logger.error("[PIXELLOT] Could not resolve stream")
                     return None
-
                 url = stream_url
 
             # ------------------------------------------------
             # Output pattern
             # ------------------------------------------------
 
-            output_pattern = (
-                f"{filename}.%(ext)s"
-            )
+            output_pattern = f"{filename}.%(ext)s"
 
             # ------------------------------------------------
             # Quality attempts
             # ------------------------------------------------
 
             if is_veo or is_pixellot:
-
+                # Single attempt — these sources don't expose quality tiers
                 qualities_to_try = [None]
-
             else:
-
                 qualities_to_try = [
                     self.preferred_quality,
                     self.fallback_quality,
-                    None
+                    None,  # absolute fallback — no quality gate
                 ]
 
             # ------------------------------------------------
             # Download loop
             # ------------------------------------------------
 
-            for idx, quality in enumerate(
-                qualities_to_try
-            ):
+            for idx, quality in enumerate(qualities_to_try):
 
-                # Use Tor for YouTube.
-                #
-                # This matches the working manual command:
-                #
-                # --proxy socks5h://127.0.0.1:9050
-                #
-                use_tor = True if is_youtube else False
+                use_tor = is_youtube  # Tor only for YouTube
 
                 cmd = self._build_base_command(
                     use_tor=use_tor,
                     is_facebook=is_facebook
                 )
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Format selection
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 if is_veo:
-
-                    format_spec = (
-                        "bestvideo[height<=1080][ext=mp4]"
-                        "+bestaudio[ext=m4a]/"
-                        "best[height<=1080][ext=mp4]/"
-                        "best"
-                    )
+                    # Veo serves native MP4/M4A — use dedicated spec
+                    format_spec = self._build_veo_format_spec()
 
                 elif is_pixellot:
-
-                    format_spec = (
-                        "bestvideo+bestaudio/"
-                        "best"
-                    )
-
-                elif is_youtube:
-
-                    if quality:
-
-                        # Do NOT require MP4/M4A here.
-                        #
-                        # This is more flexible and matches the
-                        # working manual test:
-                        #
-                        # bestvideo[height<=720]+bestaudio
-                        #
-                        format_spec = (
-                            f"bestvideo[height<={quality}]"
-                            "+bestaudio/"
-                            f"best[height<={quality}]/"
-                            "best"
-                        )
-
-                    else:
-
-                        format_spec = (
-                            "bestvideo+bestaudio/"
-                            "best"
-                        )
+                    # HLS stream — take best available
+                    format_spec = "bestvideo+bestaudio/best"
 
                 else:
+                    # YouTube, Facebook, naemoapp, unknown sources:
+                    # Force H.264 (avc1) + AAC (mp4a) so clips can be
+                    # stream-copied later with zero re-encoding.
+                    format_spec = self._build_format_spec(quality)
 
-                    if quality:
-
-                        format_spec = (
-                            f"bestvideo[height<={quality}]"
-                            "+bestaudio/"
-                            f"best[height<={quality}]/"
-                            "best"
-                        )
-
-                    else:
-
-                        format_spec = (
-                            "bestvideo+bestaudio/"
-                            "best"
-                        )
-
-                # ------------------------------------------------
-                # Add format and output
-                # ------------------------------------------------
+                # --------------------------------------------
+                # Assemble final command
+                # --------------------------------------------
 
                 cmd.extend([
-                    "-f",
-                    format_spec,
-
-                    "-o",
-                    output_pattern,
-
-                    url
+                    "-f", format_spec,
+                    "-o", output_pattern,
+                    url,
                 ])
 
                 logger.info(
-                    f"RUNNING CMD (attempt {idx + 1}):\n"
+                    f"RUNNING CMD (attempt {idx + 1}, quality={quality}):\n"
                     f"{' '.join(cmd)}"
                 )
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Execute yt-dlp
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 try:
-
                     result = subprocess.run(
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=7200 if use_tor else 1800
+                        timeout=7200 if use_tor else 1800,
                     )
-
                 except subprocess.TimeoutExpired:
-
                     logger.error(
                         f"yt-dlp timed out after "
-                        f"{7200 if use_tor else 1800} seconds"
+                        f"{7200 if use_tor else 1800}s"
                     )
-
                     continue
 
-                # ------------------------------------------------
+                # --------------------------------------------
                 # Log output
-                # ------------------------------------------------
+                # --------------------------------------------
 
                 if result.stdout:
-
-                    logger.info(
-                        result.stdout
-                    )
+                    logger.info(result.stdout)
 
                 if result.stderr:
+                    logger.warning(result.stderr)
 
-                    logger.warning(
-                        result.stderr
-                    )
+                # --------------------------------------------
+                # Detect output file
+                # --------------------------------------------
 
-                # ------------------------------------------------
-                # Detect outputs
-                # ------------------------------------------------
-
-                output_text = (
-                    result.stdout +
-                    result.stderr
-                )
-
-                actual_output = (
-                    self._find_output_file(
-                        filename,
-                        output_text
-                    )
-                )
+                output_text = result.stdout + result.stderr
+                actual_output = self._find_output_file(filename, output_text)
 
                 possible_files = []
-
                 if actual_output:
+                    possible_files.append(actual_output)
 
-                    possible_files.append(
-                        actual_output
-                    )
+                for ext in [".mp4", ".mkv", ".webm"]:
+                    possible_files.append(f"{filename}{ext}")
 
-                for ext in [
-                    ".mp4",
-                    ".mkv",
-                    ".webm"
-                ]:
+                # Deduplicate while preserving order
+                possible_files = list(dict.fromkeys(possible_files))
 
-                    possible_files.append(
-                        f"{filename}{ext}"
-                    )
-
-                # Deduplicate
-                possible_files = list(
-                    dict.fromkeys(possible_files)
-                )
-
-                # ------------------------------------------------
-                # Validate files
-                # ------------------------------------------------
+                # --------------------------------------------
+                # Validate
+                # --------------------------------------------
 
                 for file_path in possible_files:
-
-                    if self._is_valid_video_file(
-                        file_path
-                    ):
-
-                        logger.info(
-                            f"Download success: {file_path}"
-                        )
-
-                        return str(
-                            Path(file_path).absolute()
-                        )
-
-                # ------------------------------------------------
-                # Failed attempt
-                # ------------------------------------------------
+                    if self._is_valid_video_file(file_path):
+                        logger.info(f"Download success: {file_path}")
+                        return str(Path(file_path).absolute())
 
                 logger.warning(
-                    f"Download failed for quality "
-                    f"{quality}, trying next..."
+                    f"Attempt {idx + 1} failed "
+                    f"(quality={quality}), trying next..."
                 )
 
             # ------------------------------------------------
-            # Everything failed
+            # All attempts failed
             # ------------------------------------------------
 
-            logger.error(
-                "All download attempts failed"
-            )
-
+            logger.error("All download attempts failed")
             return None
 
         except Exception as e:
-
-            logger.exception(
-                f"Download error: {e}"
-            )
-
+            logger.exception(f"Download error: {e}")
             return None
 
     # --------------------------------------------------------
-    # Detect output file
+    # Detect output file from yt-dlp stdout/stderr
     # --------------------------------------------------------
 
-    def _find_output_file(
-        self,
-        base_filename: str,
-        ytdlp_output: str
-    ):
+    def _find_output_file(self, base_filename: str, ytdlp_output: str):
 
         try:
 
-            # ------------------------------------------------
-            # Merged file
-            # ------------------------------------------------
-
+            # Merged file line
             merge_match = re.search(
-                r'Merging formats into '
-                r'"([^"]+\.(?:mp4|webm|mkv))"',
+                r'Merging formats into "([^"]+\.(?:mp4|webm|mkv))"',
                 ytdlp_output
             )
-
             if merge_match:
-
                 return merge_match.group(1)
 
-            # ------------------------------------------------
-            # Destination file
-            # ------------------------------------------------
-
+            # Destination line
             dest_matches = re.findall(
-                r"Destination:\s+"
-                r'([^\s]+\.(?:mp4|webm|mkv))',
+                r"Destination:\s+([^\s]+\.(?:mp4|webm|mkv))",
                 ytdlp_output
             )
-
             if dest_matches:
-
                 return dest_matches[-1]
 
-            # ------------------------------------------------
-            # Direct filesystem check
-            # ------------------------------------------------
-
-            for ext in [
-                ".mp4",
-                ".webm",
-                ".mkv"
-            ]:
-
-                candidate = (
-                    f"{base_filename}{ext}"
-                )
-
+            # Filesystem fallback
+            for ext in [".mp4", ".webm", ".mkv"]:
+                candidate = f"{base_filename}{ext}"
                 if Path(candidate).exists():
-
                     return candidate
 
             return None
