@@ -285,7 +285,12 @@ class YoutubeDownloader:
     # Base yt-dlp command
     # --------------------------------------------------------
 
-    def _build_base_command(self, use_tor=False, is_facebook=False):
+    def _build_base_command(
+        self,
+        use_tor: bool = False,
+        is_facebook: bool = False,
+        is_veo: bool = False,
+    ):
 
         cmd = [
             "yt-dlp",
@@ -316,6 +321,14 @@ class YoutubeDownloader:
         # ----------------------------------------------------
         # Cookies
         # ----------------------------------------------------
+        # IMPORTANT: Veo is deliberately excluded from the generic
+        # cookies file.
+        #
+        # When Veo is routed through Tor, any stale/unrelated session
+        # in cookies_us.txt conflicts with the Tor exit node IP and
+        # re-triggers HTTP 403. Tor + browser headers (below) is the
+        # combination that works reliably for Veo.
+        # ----------------------------------------------------
 
         if (
             is_facebook
@@ -325,7 +338,8 @@ class YoutubeDownloader:
             cmd.extend(["--cookies", self.facebook_cookies_path])
 
         elif (
-            self.cookies_path
+            not is_veo
+            and self.cookies_path
             and os.path.exists(self.cookies_path)
         ):
             cmd.extend(["--cookies", self.cookies_path])
@@ -343,7 +357,23 @@ class YoutubeDownloader:
             ])
 
         # ----------------------------------------------------
-        # YouTube via Tor / direct
+        # Veo headers (required — Veo blocks yt-dlp's default UA)
+        # ----------------------------------------------------
+
+        if is_veo:
+            cmd.extend([
+                "--user-agent",
+                (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "--referer", "https://app.veo.co/",
+                "--add-header", "Origin:https://app.veo.co",
+            ])
+
+        # ----------------------------------------------------
+        # Tor / direct
         # ----------------------------------------------------
 
         if use_tor:
@@ -400,9 +430,9 @@ class YoutubeDownloader:
             # ------------------------------------------------
 
             if is_youtube:
-                logger.info(f"[YOUTUBE] Downloading: {url}")
+                logger.info(f"[YOUTUBE] Downloading via Tor: {url}")
             elif is_veo:
-                logger.info(f"[VEO] Downloading: {url}")
+                logger.info(f"[VEO] Downloading via Tor: {url}")
             elif is_pixellot:
                 logger.info(f"[PIXELLOT] Downloading: {url}")
             elif is_facebook:
@@ -447,11 +477,17 @@ class YoutubeDownloader:
 
             for idx, quality in enumerate(qualities_to_try):
 
-                use_tor = is_youtube  # Tor only for YouTube
+                # --------------------------------------------
+                # Route through Tor:
+                #   • YouTube  — bypasses IP-based bot detection
+                #   • Veo      — bypasses 403 at metadata stage
+                # --------------------------------------------
+                use_tor = is_youtube or is_veo
 
                 cmd = self._build_base_command(
                     use_tor=use_tor,
-                    is_facebook=is_facebook
+                    is_facebook=is_facebook,
+                    is_veo=is_veo,
                 )
 
                 # --------------------------------------------
