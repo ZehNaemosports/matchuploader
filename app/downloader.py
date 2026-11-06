@@ -321,13 +321,18 @@ class YoutubeDownloader:
         # ----------------------------------------------------
         # Cookies
         # ----------------------------------------------------
-        # IMPORTANT: Veo is deliberately excluded from the generic
-        # cookies file.
+        # Cookies are DELIBERATELY SKIPPED when routing through Tor.
         #
-        # When Veo is routed through Tor, any stale/unrelated session
-        # in cookies_us.txt conflicts with the Tor exit node IP and
-        # re-triggers HTTP 403. Tor + browser headers (below) is the
-        # combination that works reliably for Veo.
+        # Why:
+        #   • YouTube: a session cookie created from one IP, combined
+        #     with a Tor exit-node IP, looks suspicious to YouTube's
+        #     media servers. yt-dlp gets a valid signed URL, starts
+        #     downloading, then YouTube 403s mid-stream because the
+        #     cookie/IP combo doesn't match.
+        #   • Veo: same mismatch — a stale session cookie conflicts
+        #     with the Tor exit node IP and re-triggers 403.
+        #
+        # In both cases, Tor + headers (no cookies) is the working path.
         # ----------------------------------------------------
 
         if (
@@ -338,7 +343,8 @@ class YoutubeDownloader:
             cmd.extend(["--cookies", self.facebook_cookies_path])
 
         elif (
-            not is_veo
+            not use_tor          # ← KEY FIX: skip cookies when using Tor
+            and not is_veo       # ← also skip for Veo
             and self.cookies_path
             and os.path.exists(self.cookies_path)
         ):
@@ -430,9 +436,9 @@ class YoutubeDownloader:
             # ------------------------------------------------
 
             if is_youtube:
-                logger.info(f"[YOUTUBE] Downloading via Tor: {url}")
+                logger.info(f"[YOUTUBE] Downloading via Tor (no cookies): {url}")
             elif is_veo:
-                logger.info(f"[VEO] Downloading via Tor: {url}")
+                logger.info(f"[VEO] Downloading via Tor (no cookies): {url}")
             elif is_pixellot:
                 logger.info(f"[PIXELLOT] Downloading: {url}")
             elif is_facebook:
