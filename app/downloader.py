@@ -13,13 +13,16 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_COOKIES_PATH = str(PROJECT_ROOT / "cookies.txt")
+
 
 class YoutubeDownloader:
 
     def __init__(
         self,
         preferred_quality: str = "1080",
-        cookies_path: Optional[str] = "/home/ubuntu/cookies_us.txt",
+        cookies_path: Optional[str] = DEFAULT_COOKIES_PATH,
         facebook_cookies_path: Optional[str] = "/home/ubuntu/facebookcookies.txt",
     ):
         self.preferred_quality = preferred_quality
@@ -288,6 +291,7 @@ class YoutubeDownloader:
     def _build_base_command(
         self,
         use_tor: bool = False,
+        is_youtube: bool = False,
         is_facebook: bool = False,
         is_veo: bool = False,
     ):
@@ -321,18 +325,12 @@ class YoutubeDownloader:
         # ----------------------------------------------------
         # Cookies
         # ----------------------------------------------------
-        # Cookies are DELIBERATELY SKIPPED when routing through Tor.
+        # YouTube uses the cookies.txt file at the project root,
+        # even when routed through Tor.
         #
-        # Why:
-        #   • YouTube: a session cookie created from one IP, combined
-        #     with a Tor exit-node IP, looks suspicious to YouTube's
-        #     media servers. yt-dlp gets a valid signed URL, starts
-        #     downloading, then YouTube 403s mid-stream because the
-        #     cookie/IP combo doesn't match.
-        #   • Veo: same mismatch — a stale session cookie conflicts
-        #     with the Tor exit node IP and re-triggers 403.
-        #
-        # In both cases, Tor + headers (no cookies) is the working path.
+        # Veo cookies are DELIBERATELY SKIPPED when routing through Tor:
+        #   • Veo: a stale session cookie conflicts with the Tor exit
+        #     node IP and re-triggers 403.
         # ----------------------------------------------------
 
         if (
@@ -343,7 +341,14 @@ class YoutubeDownloader:
             cmd.extend(["--cookies", self.facebook_cookies_path])
 
         elif (
-            not use_tor          # ← KEY FIX: skip cookies when using Tor
+            is_youtube
+            and self.cookies_path
+            and os.path.exists(self.cookies_path)
+        ):
+            cmd.extend(["--cookies", self.cookies_path])
+
+        elif (
+            not use_tor          # ← skip cookies when using Tor
             and not is_veo       # ← also skip for Veo
             and self.cookies_path
             and os.path.exists(self.cookies_path)
@@ -436,7 +441,7 @@ class YoutubeDownloader:
             # ------------------------------------------------
 
             if is_youtube:
-                logger.info(f"[YOUTUBE] Downloading via Tor (no cookies): {url}")
+                logger.info(f"[YOUTUBE] Downloading via Tor (with cookies): {url}")
             elif is_veo:
                 logger.info(f"[VEO] Downloading via Tor (no cookies): {url}")
             elif is_pixellot:
@@ -492,6 +497,7 @@ class YoutubeDownloader:
 
                 cmd = self._build_base_command(
                     use_tor=use_tor,
+                    is_youtube=is_youtube,
                     is_facebook=is_facebook,
                     is_veo=is_veo,
                 )
