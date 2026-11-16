@@ -3,7 +3,7 @@ from app.queue.message_queue_processor import MessageProcessor
 from app.s3_client import S3client
 from app.data.data import Data
 from app.downloader import YoutubeDownloader
-from app.queue.sqs_client import SqsClient
+from app.queue.redis_client import RedisQueueClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import Settings
 
@@ -17,11 +17,9 @@ async def main():
         aws_bucket=settings.aws_bucket
     )
 
-    sqs_client = SqsClient(
-        aws_access_key=settings.aws_access_key,
-        aws_region=settings.aws_region,
-        aws_secret_key=settings.aws_secret_key,
-        aws_queue_url=settings.sqs_queue_url
+    queue_client = RedisQueueClient(
+        redis_url=settings.redis_url,
+        queue_name=settings.redis_queue_name,
     )
 
     mongodb_client = AsyncIOMotorClient(settings.database_connection_string)
@@ -36,7 +34,7 @@ async def main():
         s3_client=s3_client
     )
 
-    processor = MessageProcessor(sqs_client=sqs_client, match_downloader=match_downloader)
+    processor = MessageProcessor(queue_client=queue_client, match_downloader=match_downloader)
     await processor.poll_messages()
 
 if __name__ == "__main__":

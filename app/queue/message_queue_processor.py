@@ -2,18 +2,17 @@
 
 import os
 from pathlib import Path
-from app.queue.sqs_client import SqsClient
+from app.queue.redis_client import RedisQueueClient
 from app.service.matchdownloader import MatchDownloader
 import logging
-import asyncio
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
 class MessageProcessor:
-    def __init__(self, sqs_client:  SqsClient, match_downloader: MatchDownloader):
-        self.sqs_client = sqs_client
+    def __init__(self, queue_client: RedisQueueClient, match_downloader: MatchDownloader):
+        self.queue_client = queue_client
         self.match_downloader = match_downloader
 
     async def process_message(self, message_body: dict, receipt_handle: str):
@@ -30,17 +29,17 @@ class MessageProcessor:
                         if upload_url:
                             await self.match_downloader.data.update_match_video(match_id, upload_url)
                             logger.info(f"Successfully processed and uploaded match {match_id}. URL: {upload_url}")
-                            self.sqs_client.delete_message(receipt_handle)
+                            self.queue_client.delete_message(receipt_handle)
                             Path(video_path).unlink(missing_ok=True)
                         else:
                             logger.info(f"Failed to upload video for match {match_id}")
-                            self.sqs_client.delete_message(receipt_handle)
+                            self.queue_client.delete_message(receipt_handle)
                     else:
                         logger.info(f"Failed to download video for match {match_id}")
-                        self.sqs_client.delete_message(receipt_handle)
+                        self.queue_client.delete_message(receipt_handle)
                 except Exception as e:
                     logger.info(f"Error processing Match_Upload for {match_id}: {e}")
-                    self.sqs_client.delete_message(receipt_handle)
+                    self.queue_client.delete_message(receipt_handle)
             else:
                 logger.info("Match_Upload message missing matchId.")
 
@@ -54,13 +53,13 @@ class MessageProcessor:
                 upload_url = await self.match_downloader.upload_match_video(str(merged_video), object_key)
                 if upload_url:
                     logger.info(f"Successfully merged and upload video")
-                    self.sqs_client.delete_message(receipt_handle)
+                    self.queue_client.delete_message(receipt_handle)
                     Path(merged_video).unlink(missing_ok=True)
                     Path(video2_path).unlink(missing_ok=True)
                     Path(video1_path).unlink(missing_ok=True)
                 else:
                     logger.info(f"Failed to merge and upload video")
-                    self.sqs_client.delete_message(receipt_handle)
+                    self.queue_client.delete_message(receipt_handle)
         elif command=="Download_Video":
             link = message_body.get("link")
             output_name = message_body.get("output_name")
@@ -70,18 +69,18 @@ class MessageProcessor:
                 upload_url = await self.match_downloader.upload_match_video(str(downloaded_video), object_key)
                 if upload_url:
                     logger.info(f"Successfully downloaded and uploaded video")
-                    self.sqs_client.delete_message(receipt_handle)
+                    self.queue_client.delete_message(receipt_handle)
                     Path(downloaded_video).unlink(missing_ok=True)
                 else:
                     logger.info(f"Failed to download video")
-                    self.sqs_client.delete_message(receipt_handle)
+                    self.queue_client.delete_message(receipt_handle)
         else:
             logger.info("Unknown command")
 
     async def poll_messages(self):
         logger.info("Starting message polling...")
         while True:
-            response = self.sqs_client.receive_message()
+            response = self.queue_client.receive_message(wait_seconds=20)
             messages = response.get("Messages", [])
 
             if len(messages)>0:
@@ -96,7 +95,4 @@ class MessageProcessor:
                         logger.info(f"Failed to process message: {e}")
             else:
                 logger.info("No messages received.")
-
-            logger.info('Sleeping for 15 minutes...')
-            await asyncio.sleep(900)
             

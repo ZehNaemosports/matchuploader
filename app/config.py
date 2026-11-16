@@ -7,11 +7,18 @@ class Settings(BaseSettings):
     aws_secret_key: str
     aws_region: str
     aws_bucket: str
-    sqs_queue_url: str
+
+    # redis configs
+    redis_url: str = "redis://localhost:6379/0"
+    redis_queue_name: str = "matchuploader"
 
     # mongo configs
     database_connection_string: str
     database_name: str
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 

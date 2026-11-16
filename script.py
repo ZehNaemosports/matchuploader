@@ -2,7 +2,7 @@ import json
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import Settings
 from app.data.data import Data
-from app.queue.sqs_client import SqsClient
+from app.queue.redis_client import RedisQueueClient
 import asyncio
 from app.queue.messages import MatchUploadMessage
 import pandas as pd
@@ -10,11 +10,9 @@ import pandas as pd
 async def run():
     settings = Settings()
 
-    sqs_client = SqsClient(
-        aws_access_key=settings.aws_access_key,
-        aws_region=settings.aws_region,
-        aws_secret_key=settings.aws_secret_key,
-        aws_queue_url=settings.sqs_queue_url
+    queue_client = RedisQueueClient(
+        redis_url=settings.redis_url,
+        queue_name=settings.redis_queue_name,
     )
 
     mongodb_client = AsyncIOMotorClient(settings.database_connection_string)
@@ -32,7 +30,7 @@ async def run():
             print(message)
             message.set_post_date()
             message_body_json = json.dumps(message.to_dict())
-            response = sqs_client.send_message(message_body_json)
+            response = queue_client.send_message(message_body_json)
             print(response)
 
     df  = pd.DataFrame(matches)

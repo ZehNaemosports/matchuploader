@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import FileResponse
 import os
-from app.dependencies import get_match_downloader, get_sqs_client
-from app.queue.sqs_client import SqsClient
+from app.dependencies import get_match_downloader, get_queue_client
+from app.queue.redis_client import RedisQueueClient
 from app.service.matchdownloader import MatchDownloader
 from app.queue.messages import MatchUploadMessage, MergeVideosMessage, MergeRequest, DownloadVideoMessage
 import json
@@ -50,34 +50,34 @@ async def upload_match_video_route(
         print(f"An error occurred: {e}")
 
 @router.post('/match/{matchId}/upload')
-async def upload_match_video(matchId: str, sqsClient: SqsClient = Depends(get_sqs_client) ):
+async def upload_match_video(matchId: str, queue_client: RedisQueueClient = Depends(get_queue_client) ):
     message = MatchUploadMessage(matchId=matchId)
     message.set_post_date()
     message_body_json = json.dumps(message.to_dict())
-    response = sqsClient.send_message(message_body_json)
+    response = queue_client.send_message(message_body_json)
     return response.get('MessageId')
 
 
 @router.post('/merge_videos')
 async def merge_videos(
         request: MergeRequest,
-        sqsClient: SqsClient = Depends(get_sqs_client)
+        queue_client: RedisQueueClient = Depends(get_queue_client)
 ):
     message = MergeVideosMessage(video1=request.video1, video2=request.video2, output_name=request.output_name)
     message.set_post_date()
 
     message_body_json = json.dumps(message.to_dict())
-    response = sqsClient.send_message(message_body_json)
+    response = queue_client.send_message(message_body_json)
 
     return response.get('MessageId')
 
 @router.post("/download_video")
 async def download_video(
         request: DownloadVideoMessage,
-        sqsClient: SqsClient = Depends(get_sqs_client)
+        queue_client: RedisQueueClient = Depends(get_queue_client)
 ):
     message = DownloadVideoMessage(link=request.link, output_name=request.output_name)
     message.set_post_date()
     message_body_json = json.dumps(message.to_dict())
-    response = sqsClient.send_message(message_body_json)
+    response = queue_client.send_message(message_body_json)
     return response.get('MessageId')

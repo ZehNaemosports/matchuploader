@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.data.data import Data
 from app.downloader import YoutubeDownloader
-from app.queue.sqs_client import SqsClient
+from app.queue.redis_client import RedisQueueClient
 from app.s3_client import S3client
 from app.service.matchdownloader import MatchDownloader
 
@@ -19,8 +19,8 @@ async def get_data(request: Request) -> Data:
 async def get_youtube_downloader(request: Request) -> YoutubeDownloader:
     return request.app.state.youtube_downloader
 
-async def get_sqs_client(request: Request) -> SqsClient:
-    return request.app.state.sqs_client
+async def get_queue_client(request: Request) -> RedisQueueClient:
+    return request.app.state.queue_client
 
 async def get_match_downloader(request: Request) -> MatchDownloader:
     return request.app.state.match_downloader
